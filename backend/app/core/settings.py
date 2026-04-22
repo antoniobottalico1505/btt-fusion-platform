@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     MICROCAP_LIVE_ENABLED: bool = False
     STORAGE_ROOT: str = './storage'
     CORS_ALLOW_ORIGINS: str = 'http://localhost:3000'
+    CORS_ALLOW_ORIGIN_REGEX: str = r'^https://([a-z0-9-]+\.)*vercel\.app$'
     STRIPE_SECRET_KEY: str = ''
     STRIPE_WEBHOOK_SECRET: str = ''
     STRIPE_PRICE_MONTHLY: str = ''
@@ -35,6 +36,15 @@ class Settings(BaseSettings):
     def validate_mode(cls, value: str) -> str:
         v = (value or 'paper').strip().lower()
         return v if v in {'paper', 'live'} else 'paper'
+
+    @property
+    def cors_origins(self) -> List[str]:
+        return [x.strip() for x in self.CORS_ALLOW_ORIGINS.split(',') if x.strip()]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()        return v if v in {'paper', 'live'} else 'paper'
 
     @property
     def cors_origins(self) -> List[str]:
