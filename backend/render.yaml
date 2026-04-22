@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: btt-fusion-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: STORAGE_ROOT
+        value: ./storage

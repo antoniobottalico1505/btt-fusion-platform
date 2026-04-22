@@ -1,0 +1,273 @@
+mode: paper
+tick_interval_sec: 1
+scan_interval_sec: 8
+refresh_watchlist_sec: 12
+allowed_chains:
+- all
+start_equity_usd: 200
+min_liquidity_usd: 20000
+min_volume_5m_usd: 1800
+min_txns_5m: 10
+max_fdv_usd: 30000000
+strategy:
+  prune_no_data_enabled: true
+  prune_no_data_after_n: 2
+  prune_no_data_min_age_sec: 60
+  zerox_client_rps: 0.5
+  zerox_retry_max_attempts: 8
+  zerox_retry_base_sleep_sec: 2.00
+  zerox_max_candidates_per_tick: 1
+  rebound_fail_fast_sec: 35
+  rebound_fail_fast_pnl_pct: -0.02
+  rebound_fail_fast_peak_pnl_pct: 0.01
+  breakeven_arm_pct: 0.05
+  breakeven_offset_pct: 0.05
+  tp1_take_pct: 0.1
+  tp1_fraction: 0.0
+  tp1_move_stop_to_be: false
+  min_watch_age_sec: 15
+  min_price_points_window_sec: 120
+  min_price_points_before_entry: 3
+  entry_signal_min: 0.64
+  entry_signal_boost_max: 0.3
+  paper_fill_slippage_bps: 40
+  paper_fill_max_slippage_bps: 150
+  paper_fill_dynamic_slippage: true
+  mode: dip_rebound
+  dip_window_sec: 120
+  short_window_sec: 15
+  min_dip_pct_lookback: -0.03
+  max_dump_speed_pct_per_sec: -0.00006
+  min_rebound_speed_pct_per_sec: 0.00004
+  min_micro_rebound_pct: 0.015
+  min_speed5_pct_per_sec: 0.00003
+  target_entries_per_day: 1000
+  daily_entry_cap: 100000
+  max_new_positions_per_tick: 1
+  freshness_window_sec: 120
+  max_price_runup_in_freshness_window_pct: 0.08
+  paper_use_zerox_precheck: true
+  strict_precheck_required: true
+  solana_precheck_enabled: true
+  solana_quote_base_url: "https://lite-api.jup.ag"
+  solana_precheck_rps: 0.5
+  solana_precheck_timeout_sec: 12
+  solana_precheck_usdc: 45
+  solana_max_price_impact_bps: 560
+  institutional:
+    enabled: false
+    reject_stale_snapshot_sec: 0
+    max_trade_notional_usd: 0
+    max_trade_notional_pct: 0
+    max_chain_exposure_pct: 0
+    precheck_fail_cooldown_sec: 600
+  health:
+    enabled: true
+    use_zerox_precheck: true
+    min_health_score: 0.14
+    max_roundtrip_loss_pct: 0.045
+    liq_stability_window_sec: 450
+    max_liq_range_pct: 0.35
+    min_buys_m5: 8
+    min_buy_ratio_m5: 0.54
+    absorption_window_sec: 120
+    max_recent_drawdown_from_peak_pct: 0.30
+    max_buy_tax_bps: 100
+    max_sell_tax_bps: 100
+    narrative:
+      enabled: true
+      hard_reject: false
+      attention_window_sec: 3600
+      min_txns_avg: 20
+      min_vol_avg: 3000
+      max_drop_pct: 0.3
+      soft_floor: 0.8
+    hype:
+      enabled: true
+      hard_reject: false
+      window_sec: 21600
+      min_events: 2
+      soft_floor: 0.8
+    social:
+      enabled: true
+      hard_reject: false
+      window_sec: 21600
+      min_mentions: 3
+      poll_sec: 20
+      soft_floor: 0.8
+      telegram:
+        enabled: true
+        default_chain: ethereum
+        default_evm_chain: ethereum
+        default_solana_chain: solana
+        api_id: 39312896
+        api_hash: f20d33226555c665da9b2b7dc5587619
+        session: microcap_bot
+        since_sec: 86400
+        max_msgs_per_channel: 400
+        poll_sec: 20
+        watchlist_on_repeats: true
+        watchlist_min_mentions: 3
+        watchlist_window_sec: 21600
+        watchlist_require_dexscreener: true
+        watchlist_max_add_per_poll: 12
+        accept_plain_addrs: false
+        channels:
+        - '@CoinMarketCap_Listings'
+        - '@CoinMarketCapAnnouncements'
+        - '@CoinMarketCap'
+        - '@GeckoTerminal'
+        - '@coingecko'
+      x:
+        enabled: false
+        bearer_token: ''
+        default_chain: ethereum
+        default_evm_chain: ethereum
+        default_solana_chain: solana
+        since_sec: 1800
+        max_results_per_call: 20
+        accept_plain_addrs: false
+        watchlist_on_repeats: true
+        watchlist_min_mentions: 3
+        watchlist_window_sec: 21600
+        watchlist_max_add_per_poll: 10
+        watchlist_require_dexscreener: true
+        usernames:
+        - dexscreener
+        - GeckoTerminal
+        - CoinMarketCap
+        - coingecko
+        search_queries:
+        - '(url:"dexscreener.com/base/" OR url:"dexscreener.com/ethereum/" OR url:"dexscreener.com/bsc/" OR url:"dexscreener.com/arbitrum/") -is:retweet -is:reply'
+        - '(url:"dexscreener.com/solana/" OR url:"birdeye.so/token/") -is:retweet -is:reply'
+        - '("contract address" OR "token address" OR CA) (0x OR solana) has:links -is:retweet -is:reply'
+      newsapi:
+        enabled: false
+        api_key: b05b3738d28b4992851b8a72981f497f
+        lookback_hours: 24
+        min_interval_sec: 0
+        max_queries_per_poll: 3
+        pause_on_429_sec: 0
+        watchlist_on_repeats: true
+        watchlist_min_mentions: 3
+        watchlist_window_sec: 21600
+        watchlist_max_add_per_poll: 14
+        discovery_enabled: false
+        discovery_add_immediately: true
+        discovery_default_chain: ethereum
+        discovery_default_evm_chain: ethereum
+        discovery_default_solana_chain: solana
+        discovery_lookback_hours: 24
+        discovery_page_size: 10
+        discovery_max_articles: 80
+        discovery_max_add_per_poll: 10
+        discovery_queries:
+        - 'dexscreener.com AND (0x OR ethereum OR base OR bsc OR arbitrum)'
+        - '(dexscreener.com AND solana) OR birdeye.so/token'
+        - '("contract address" OR "token address" OR CA) AND 0x'
+        - '("contract address" OR "token address" OR CA) AND solana'
+  min_rebound_pct_before_trail: 0.1
+  rebound_retrace_pct: 0.0
+  trail_step_pct: 0.1
+  trail_floor_profit_pct: 0.05
+  min_seconds_after_trail_activation: 0
+  exit_if_dump_speed_again_pct_per_sec: null
+  exit_pump_slow_speed_pct_per_sec: null
+  dump_speed_again_min_hold_sec: 30
+  dump_speed_again_min_pnl: -0.02
+  dump_speed_again_disable_when_trailing_armed: true
+  trail_min_step_to_exit: 1
+  trail_exit_confirm_ticks: 2
+  cooldown_after_loss_sec: 300
+  min_order_usd: 10.0
+  paper_mev_enabled: true
+  paper_mev_base_bps: 20
+  paper_mev_per_tax_bps: 0.6
+  paper_mev_per_slip_bps: 0.03
+  paper_mev_cap_bps: 300
+  paper_mev_tax_ref_bps: 200
+  paper_mev_mode_min: 0.25
+  paper_mev_mode_max: 0.9
+  pos_sizing_rt_knee_pct: 0.02
+  pos_sizing_tax_knee_bps: 200
+  pos_sizing_slip_knee_bps: 800
+  pos_sizing_flow_thr: 0.78
+  pos_sizing_liq_thr: 0.75
+  pos_sizing_boost_max: 0.35
+  pos_sizing_min_mult: 0.25
+  pos_sizing_max_mult: 1.5
+  pos_sizing_loss_streak_mul: 0.7
+  ban_token_after_loss_streak: true
+  loss_streak_n: 2
+  loss_streak_loss_pct_threshold: -0.05
+  loss_streak_blacklist_sec: 7200
+  loss_streak_reset_on_win: false
+  loss_streak_perma_ban: false
+  ban_token_after_first_trade_loss: false
+  ban_token_after_first_trade_loss_min_pnl_pct: -0.05
+stop_loss_pct: 0.06
+max_hold_sec: 1200
+max_positions: 2
+cooldown_sec: 120
+base_risk_pct: 0.16
+scale_exponent: 1.0
+max_risk_pct: 0.32
+max_total_exposure_pct: 0.40
+max_drawdown_from_peak: 1.0
+max_daily_loss_pct: 0.20
+dynamic_slippage: true
+zeroex_slippage_bps: 300
+max_slippage_bps: 1000
+max_buy_tax_bps: 100
+max_sell_tax_bps: 100
+precheck_usdc: 45
+metrics_enabled: true
+metrics_port: 9108
+snapshot_enabled: true
+snapshot_store_top_n: 250
+refresh_include_recent_sec: 1800
+refresh_include_recent_max: 120
+snapshot_retention_days: 14
+max_consecutive_failures: 0
+pause_sec_after_failures: 0
+chains:
+  base:
+    chain_id: 8453
+    usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+    rpc_urls: []
+  ethereum:
+    chain_id: 1
+    usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+    rpc_urls: []
+  arbitrum:
+    chain_id: 42161
+    usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+    rpc_urls: []
+  optimism:
+    chain_id: 10
+    usdc: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85'
+    rpc_urls: []
+  polygon:
+    chain_id: 137
+    usdc: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
+    rpc_urls: []
+  avalanche:
+    chain_id: 43114
+    usdc: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E'
+    rpc_urls: []
+  bsc:
+    chain_id: 56
+    usdc: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d'
+    rpc_urls: []
+  linea:
+    chain_id: 59144
+    usdc: '0x176211869cA2b568f2A7D4EE941E073a821EE1ff'
+    rpc_urls: []
+  scroll:
+    chain_id: 534352
+    usdc: '0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4'
+    rpc_urls: []
+  blast:
+    chain_id: 81457
+    usdc: '0x4300000000000000000000000000000000000003'
+    rpc_urls: []

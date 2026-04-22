@@ -1,0 +1,11 @@
+{
+  "countries": "united states,canada,united kingdom,germany,france,italy,spain,netherlands,sweden,switzerland,japan,south korea,hong kong,singapore,australia,india,brazil",
+  "all_countries": false,
+  "max_per_country": 30,
+  "shortlist_multiplier": 4,
+  "workers": 6,
+  "top": 50,
+  "portfolio_size": 12,
+  "emerging_only": false,
+  "technical_refine": true
+}

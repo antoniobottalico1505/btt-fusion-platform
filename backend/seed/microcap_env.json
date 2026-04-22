@@ -1,0 +1,10 @@
+{
+  "ZEROEX_API_KEY": "",
+  "X_BEARER_TOKEN": "",
+  "TELEGRAM_BOT_TOKEN": "",
+  "TELEGRAM_CHAT_ID": "",
+  "DISCORD_WEBHOOK_URL": "",
+  "PRIVATE_KEY": "",
+  "MODE_LIVE_RPC_URLS": "",
+  "BOT_KILL_SWITCH": "false"
+}
