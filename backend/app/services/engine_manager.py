@@ -23,48 +23,48 @@ class MicrocapProcessManager:
 
     @property
     def workdir(self) -> Path:
-        return PRIVATE / 'microcap'
+        return PRIVATE / "microcap"
 
     def status(self) -> dict[str, Any]:
         with self._lock:
             running = self._proc is not None and self._proc.poll() is None
             return {
-                'running': running,
-                'pid': self._proc.pid if self._proc else None,
-                'started_at_epoch': self._started_at,
-                'mode': self._desired_mode,
-                'uptime_sec': (time.time() - self._started_at) if (running and self._started_at) else 0,
-                'live_enabled': settings.MICROCAP_LIVE_ENABLED,
+                "running": running,
+                "pid": self._proc.pid if self._proc else None,
+                "started_at_epoch": self._started_at,
+                "mode": self._desired_mode,
+                "uptime_sec": (time.time() - self._started_at) if (running and self._started_at) else 0,
+                "live_enabled": settings.MICROCAP_LIVE_ENABLED,
             }
 
     def _force_safe_webservice_config(self) -> None:
-        config_path = self.workdir / 'config.yaml'
+        config_path = self.workdir / "config.yaml"
         if not config_path.exists():
             return
 
-        txt = config_path.read_text(encoding='utf-8')
+        txt = config_path.read_text(encoding="utf-8")
         original = txt
 
-        if self._desired_mode == 'paper':
-            if re.search(r'(?mi)^mode\s*:', txt):
-                txt = re.sub(r'(?mi)^mode\s*:\s*live\s*$', 'mode: paper', txt)
+        if self._desired_mode == "paper":
+            if re.search(r"(?mi)^mode\s*:", txt):
+                txt = re.sub(r"(?mi)^mode\s*:\s*live\s*$", "mode: paper", txt)
             else:
                 txt = f"mode: paper\n{txt}"
 
-        if re.search(r'(?mi)^metrics_enabled\s*:', txt):
-            txt = re.sub(r'(?mi)^metrics_enabled\s*:\s*true\s*$', 'metrics_enabled: false', txt)
+        if re.search(r"(?mi)^metrics_enabled\s*:", txt):
+            txt = re.sub(r"(?mi)^metrics_enabled\s*:\s*true\s*$", "metrics_enabled: false", txt)
         else:
-            txt = txt.rstrip() + '\nmetrics_enabled: false\n'
+            txt = txt.rstrip() + "\nmetrics_enabled: false\n"
 
         if txt != original:
-            config_path.write_text(txt, encoding='utf-8')
+            config_path.write_text(txt, encoding="utf-8")
 
     def _spawn(self) -> None:
-        engine = engine_paths()['microcap']
+        engine = engine_paths()["microcap"]
         env = os.environ.copy()
-        env.update({k: str(v) for k, v in get_microcap_env(masked=False).items() if v not in (None, '')})
-        env['PYTHONUNBUFFERED'] = '1'
-        env['BTTFUSION_DISABLE_PROMETHEUS'] = '1'
+        env.update({k: str(v) for k, v in get_microcap_env(masked=False).items() if v not in (None, "")})
+        env["PYTHONUNBUFFERED"] = "1"
+        env["BTTFUSION_DISABLE_PROMETHEUS"] = "1"
 
         self._force_safe_webservice_config()
 
