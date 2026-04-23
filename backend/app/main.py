@@ -1,4 +1,5 @@
 import json
+import threading
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -38,6 +39,7 @@ from app.services.microcap_reader import read_dashboard
 settings = get_settings()
 app = FastAPI(title=settings.APP_NAME)
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -46,6 +48,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _safe_autostart_microcap() -> None:
+    try:
+        microcap_manager.start(mode=settings.MICROCAP_PUBLIC_MODE)
+    except Exception:
+        pass
 
 
 @app.on_event("startup")
@@ -57,15 +66,7 @@ def startup() -> None:
         db.close()
 
     if settings.MICROCAP_AUTO_START:
-        try:
-            microcap_manager.start(mode=settings.MICROCAP_PUBLIC_MODE)
-        except Exception:
-            pass
-
-
-@app.get("/health")
-def health() -> dict:
-    return {"ok": True, "app": settings.APP_NAME, "env": settings.APP_ENV}
+        threading.Thread(target=_safe_autostart_microcap, daemon=True).start()
 
 
 @app.get("/")
@@ -76,6 +77,11 @@ def root() -> dict:
         "health": "/health",
         "public_site": "/api/public/site",
     }
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"ok": True, "app": settings.APP_NAME, "env": settings.APP_ENV}
 
 
 @app.post("/api/auth/register")
