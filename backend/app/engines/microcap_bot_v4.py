@@ -5612,7 +5612,8 @@ async def main():
     cfg = load_config(cfg_path)
 
     # Prometheus metrics
-    if cfg.metrics_enabled:
+    disable_prometheus = str(os.getenv("BTTFUSION_DISABLE_PROMETHEUS", "")).strip().lower() in {"1", "true", "yes", "on"}
+    if cfg.metrics_enabled and not disable_prometheus:
         try:
             start_http_server(int(cfg.metrics_port))
             logging.getLogger("microcap_bot_v4").info(
@@ -5627,6 +5628,11 @@ async def main():
                 str(e),
                 cfg_path,
             )
+    elif cfg.metrics_enabled and disable_prometheus:
+                  logging.getLogger("microcap_bot_v4").info(
+                            "Prometheus metrics disattivate da BTTFUSION_DISABLE_PROMETHEUS=1 | config=%s",
+                            cfg_path,
+                  )
 
     bot = MicrocapBot(cfg)
     await bot.run()

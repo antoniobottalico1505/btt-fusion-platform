@@ -52,6 +52,16 @@ def health() -> dict:
     return {'ok': True, 'app': settings.APP_NAME, 'env': settings.APP_ENV}
 
 
+@app.get('/')
+def root() -> dict:
+    return {
+        'ok': True,
+        'service': 'btt-fusion-api',
+        'health': '/health',
+        'public_site': '/api/public/site',
+    }
+
+
 @app.post('/api/auth/register')
 def register(payload: RegisterIn, db: Session = Depends(get_db)):
     existing = db.scalar(select(User).where(User.email == payload.email.lower()))

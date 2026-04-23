@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -36,11 +37,37 @@ class MicrocapProcessManager:
                 'live_enabled': settings.MICROCAP_LIVE_ENABLED,
             }
 
+    def _force_safe_webservice_config(self) -> None:
+        config_path = self.workdir / 'config.yaml'
+        if not config_path.exists():
+            return
+
+        txt = config_path.read_text(encoding='utf-8')
+        original = txt
+
+        if self._desired_mode == 'paper':
+            if re.search(r'(?mi)^mode\s*:', txt):
+                txt = re.sub(r'(?mi)^mode\s*:\s*live\s*$', 'mode: paper', txt)
+            else:
+                txt = f"mode: paper\n{txt}"
+
+        if re.search(r'(?mi)^metrics_enabled\s*:', txt):
+            txt = re.sub(r'(?mi)^metrics_enabled\s*:\s*true\s*$', 'metrics_enabled: false', txt)
+        else:
+            txt = txt.rstrip() + '\nmetrics_enabled: false\n'
+
+        if txt != original:
+            config_path.write_text(txt, encoding='utf-8')
+
     def _spawn(self) -> None:
         engine = engine_paths()['microcap']
         env = os.environ.copy()
         env.update({k: str(v) for k, v in get_microcap_env(masked=False).items() if v not in (None, '')})
         env['PYTHONUNBUFFERED'] = '1'
+        env['BTTFUSION_DISABLE_PROMETHEUS'] = '1'
+
+        self._force_safe_webservice_config()
+
         self._proc = subprocess.Popen(
             [sys.executable, str(engine)],
             cwd=str(self.workdir),
@@ -54,11 +81,6 @@ class MicrocapProcessManager:
         with self._lock:
             if mode:
                 self._desired_mode = mode.strip().lower()
-            config_path = self.workdir / 'config.yaml'
-            if self._desired_mode == 'paper' and config_path.exists():
-                txt = config_path.read_text(encoding='utf-8')
-                if 'mode: live' in txt:
-                    config_path.write_text(txt.replace('mode: live', 'mode: paper'), encoding='utf-8')
             if self._proc and self._proc.poll() is None:
                 return self.status()
             self._spawn()
