@@ -8,16 +8,33 @@ export default function BttPage() {
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
 
+  async function load() {
+    try {
+      const res = await apiFetch('/api/public/btt/latest')
+      setData(res)
+      setErr('')
+    } catch (e: any) {
+      setErr(e.message || 'Errore caricamento BTT')
+    }
+  }
+
   useEffect(() => {
-    apiFetch('/api/public/btt/latest').then(setData).catch((e) => setErr(e.message))
+    load()
+    const t = setInterval(load, 5000)
+    return () => clearInterval(t)
   }, [])
 
   async function run() {
     setMsg('')
     setErr('')
     try {
-      const res = await apiFetch<{ job_id: number; status: string }>('/api/user/btt/run', { method: 'POST' }, true)
+      const res = await apiFetch<{ job_id: number; status: string }>(
+        '/api/user/btt/run',
+        { method: 'POST' },
+        true
+      )
       setMsg(`Run avviato: job #${res.job_id}`)
+      await load()
     } catch (e: any) {
       setErr(e.message)
     }
@@ -36,16 +53,35 @@ export default function BttPage() {
         </div>
         <button onClick={run}>Lancia run demo</button>
       </div>
+
       {msg ? <div className="good">{msg}</div> : null}
       {err ? <div className="bad">{err}</div> : null}
+
       {!data?.has_job ? (
-        <div className="card"><h2 className="section-title">Nessun report ancora disponibile</h2><p className="muted">Il motore è già collegato. Il primo report apparirà qui dopo il primo run server-side.</p></div>
+        <div className="card">
+          <h2 className="section-title">Nessun report ancora disponibile</h2>
+          <p className="muted">Il motore è collegato ma non ha ancora prodotto un output.</p>
+        </div>
       ) : (
         <>
           <div className="grid-2">
-            <div className="card"><h2 className="section-title">Stato ultimo job</h2><pre className="log">{JSON.stringify({ id: latest.id, status: latest.status, created_at: latest.created_at, preset: latest.summary?.preset }, null, 2)}</pre></div>
-            <div className="card"><h2 className="section-title">Log</h2><pre className="log">{latest.stdout_log || latest.error_log || 'Nessun log'}</pre></div>
+            <div className="card">
+              <h2 className="section-title">Stato ultimo job</h2>
+              <pre className="log">{JSON.stringify({
+                id: latest?.id,
+                status: latest?.status,
+                created_at: latest?.created_at,
+                return_code: latest?.summary?.return_code,
+                preset: latest?.summary?.preset,
+              }, null, 2)}</pre>
+            </div>
+
+            <div className="card">
+              <h2 className="section-title">Log</h2>
+              <pre className="log">{latest?.stdout_log || latest?.error_log || 'Nessun log'}</pre>
+            </div>
           </div>
+
           <div className="card">
             <div className="row">
               <h2 className="section-title">Top ranking</h2>
@@ -55,15 +91,51 @@ export default function BttPage() {
                 </a>
               ) : null}
             </div>
-            <div className="table-wrap"><table><thead><tr>{topRows[0] ? Object.keys(topRows[0]).map((k) => <th key={k}>{k}</th>) : <th>Nessun dato</th>}</tr></thead><tbody>
-              {topRows.map((row: any, idx: number) => <tr key={idx}>{Object.keys(topRows[0] || {}).map((k) => <td key={k}>{String(row[k] ?? '')}</td>)}</tr>)}
-            </tbody></table></div>
+
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    {topRows[0]
+                      ? Object.keys(topRows[0]).map((k) => <th key={k}>{k}</th>)
+                      : <th>Nessun dato</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {topRows.length === 0 ? (
+                    <tr><td>Nessun dato</td></tr>
+                  ) : topRows.map((row: any, idx: number) => (
+                    <tr key={idx}>
+                      {Object.keys(topRows[0] || {}).map((k) => <td key={k}>{String(row[k] ?? '')}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+
           <div className="card">
             <h2 className="section-title">Portafoglio suggerito</h2>
-            <div className="table-wrap"><table><thead><tr>{portfolioRows[0] ? Object.keys(portfolioRows[0]).map((k) => <th key={k}>{k}</th>) : <th>Nessun dato</th>}</tr></thead><tbody>
-              {portfolioRows.map((row: any, idx: number) => <tr key={idx}>{Object.keys(portfolioRows[0] || {}).map((k) => <td key={k}>{String(row[k] ?? '')}</td>)}</tr>)}
-            </tbody></table></div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    {portfolioRows[0]
+                      ? Object.keys(portfolioRows[0]).map((k) => <th key={k}>{k}</th>)
+                      : <th>Nessun dato</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {portfolioRows.length === 0 ? (
+                    <tr><td>Nessun dato</td></tr>
+                  ) : portfolioRows.map((row: any, idx: number) => (
+                    <tr key={idx}>
+                      {Object.keys(portfolioRows[0] || {}).map((k) => <td key={k}>{String(row[k] ?? '')}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

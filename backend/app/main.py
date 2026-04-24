@@ -148,8 +148,13 @@ def public_site(db: Session = Depends(get_db)):
 
 @app.get("/api/public/microcap")
 def public_microcap():
+    status = microcap_manager.status()
+
+    if settings.MICROCAP_AUTO_START and not status.get("running"):
+        status = microcap_manager.start(mode=settings.MICROCAP_PUBLIC_MODE)
+
     return {
-        "process": microcap_manager.status(),
+        "process": status,
         "dashboard": read_dashboard(),
         "public_mode": settings.MICROCAP_PUBLIC_MODE,
         "live_available": settings.MICROCAP_LIVE_ENABLED,
