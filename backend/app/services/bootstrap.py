@@ -3,7 +3,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
@@ -15,136 +15,92 @@ from app.services.storage import ensure_storage
 settings = get_settings()
 
 
-def _sqlite_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    cur = conn.cursor()
-    cur.execute(f"PRAGMA table_info({table})")
-    rows = cur.fetchall()
-    return any(str(row[1]) == column for row in rows)
-
-
-def _sqlite_add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl_tail: str) -> None:
-    if _sqlite_has_column(conn, table, column):
-        return
-    cur = conn.cursor()
-    cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_tail}")
-
-
-def _migrate_sqlite_app_db() -> None:
-    if engine.url.get_backend_name() != "sqlite":
-        return
-
-    db_name = engine.url.database
-    if not db_name:
-        return
-
-    db_path = Path(db_name)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    conn = sqlite3.connect(str(db_path))
+def _column_exists(inspector, table: str, column: str) -> bool:
     try:
-        cur = conn.cursor()
+        cols = inspector.get_columns(table)
+    except Exception:
+        return False
+    return any(str(col.get("name")) == column for col in cols)
 
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            email TEXT UNIQUE,
-            password_hash TEXT,
-            full_name TEXT DEFAULT '',
-            is_admin BOOLEAN DEFAULT 0,
-            is_active BOOLEAN DEFAULT 1,
-            trial_started_at TEXT,
-            trial_expires_at TEXT,
-            subscription_status TEXT DEFAULT 'inactive',
-            subscription_plan TEXT DEFAULT 'none',
-            stripe_customer_id TEXT DEFAULT '',
-            stripe_subscription_id TEXT DEFAULT '',
-            created_at TEXT,
-            updated_at TEXT
-        )
-        """)
 
-        _sqlite_add_column_if_missing(conn, "users", "full_name", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "users", "is_admin", "BOOLEAN DEFAULT 0")
-        _sqlite_add_column_if_missing(conn, "users", "is_active", "BOOLEAN DEFAULT 1")
-        _sqlite_add_column_if_missing(conn, "users", "trial_started_at", "TEXT")
-        _sqlite_add_column_if_missing(conn, "users", "trial_expires_at", "TEXT")
-        _sqlite_add_column_if_missing(conn, "users", "subscription_status", "TEXT DEFAULT 'inactive'")
-        _sqlite_add_column_if_missing(conn, "users", "subscription_plan", "TEXT DEFAULT 'none'")
-        _sqlite_add_column_if_missing(conn, "users", "stripe_customer_id", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "users", "stripe_subscription_id", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "users", "created_at", "TEXT")
-        _sqlite_add_column_if_missing(conn, "users", "updated_at", "TEXT")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users(email)")
+def _dialect_text_type() -> str:
+    return "TEXT"
 
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS btt_jobs (
-            id INTEGER PRIMARY KEY,
-            user_id INTEGER,
-            created_at TEXT,
-            updated_at TEXT,
-            status TEXT DEFAULT 'queued',
-            stdout_log TEXT DEFAULT '',
-            error_log TEXT DEFAULT '',
-            run_dir TEXT DEFAULT '',
-            report_path TEXT DEFAULT '',
-            top_csv_path TEXT DEFAULT '',
-            weights_csv_path TEXT DEFAULT '',
-            failed_csv_path TEXT DEFAULT '',
-            summary_json TEXT DEFAULT '{}'
-        )
-        """)
 
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "user_id", "INTEGER")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "created_at", "TEXT")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "updated_at", "TEXT")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "status", "TEXT DEFAULT 'queued'")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "stdout_log", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "error_log", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "run_dir", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "report_path", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "top_csv_path", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "weights_csv_path", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "failed_csv_path", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "btt_jobs", "summary_json", "TEXT DEFAULT '{}'")
+def _dialect_bool_type() -> str:
+    if engine.dialect.name == "postgresql":
+        return "BOOLEAN"
+    return "BOOLEAN"
 
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS audit_logs (
-            id INTEGER PRIMARY KEY,
-            event_type TEXT,
-            actor_email TEXT DEFAULT '',
-            payload TEXT DEFAULT '{}',
-            created_at TEXT
-        )
-        """)
 
-        _sqlite_add_column_if_missing(conn, "audit_logs", "event_type", "TEXT")
-        _sqlite_add_column_if_missing(conn, "audit_logs", "actor_email", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "audit_logs", "payload", "TEXT DEFAULT '{}'")
-        _sqlite_add_column_if_missing(conn, "audit_logs", "created_at", "TEXT")
+def _dialect_datetime_type() -> str:
+    if engine.dialect.name == "postgresql":
+        return "TIMESTAMP WITH TIME ZONE"
+    return "TEXT"
 
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS app_kv (
-            id INTEGER PRIMARY KEY,
-            key TEXT,
-            value TEXT DEFAULT '',
-            updated_at TEXT
-        )
-        """)
 
-        _sqlite_add_column_if_missing(conn, "app_kv", "key", "TEXT")
-        _sqlite_add_column_if_missing(conn, "app_kv", "value", "TEXT DEFAULT ''")
-        _sqlite_add_column_if_missing(conn, "app_kv", "updated_at", "TEXT")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_app_kv_key ON app_kv(key)")
+def _add_column_if_missing(table: str, column: str, ddl_tail: str) -> None:
+    inspector = inspect(engine)
+    if _column_exists(inspector, table, column):
+        return
 
-        conn.commit()
-    finally:
-        conn.close()
+    stmt = text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_tail}")
+    with engine.begin() as conn:
+        conn.execute(stmt)
+
+
+def _ensure_schema_compat() -> None:
+    Base.metadata.create_all(bind=engine)
+
+    # users
+    _add_column_if_missing("users", "full_name", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("users", "is_admin", f"{_dialect_bool_type()} DEFAULT FALSE")
+    _add_column_if_missing("users", "is_active", f"{_dialect_bool_type()} DEFAULT TRUE")
+    _add_column_if_missing("users", "trial_started_at", _dialect_datetime_type())
+    _add_column_if_missing("users", "trial_expires_at", _dialect_datetime_type())
+    _add_column_if_missing("users", "subscription_status", f"{_dialect_text_type()} DEFAULT 'inactive'")
+    _add_column_if_missing("users", "subscription_plan", f"{_dialect_text_type()} DEFAULT 'none'")
+    _add_column_if_missing("users", "stripe_customer_id", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("users", "stripe_subscription_id", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("users", "created_at", _dialect_datetime_type())
+    _add_column_if_missing("users", "updated_at", _dialect_datetime_type())
+
+    # btt_jobs
+    _add_column_if_missing("btt_jobs", "user_id", "INTEGER")
+    _add_column_if_missing("btt_jobs", "created_at", _dialect_datetime_type())
+    _add_column_if_missing("btt_jobs", "updated_at", _dialect_datetime_type())
+    _add_column_if_missing("btt_jobs", "status", f"{_dialect_text_type()} DEFAULT 'queued'")
+    _add_column_if_missing("btt_jobs", "stdout_log", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("btt_jobs", "error_log", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("btt_jobs", "run_dir", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("btt_jobs", "report_path", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("btt_jobs", "top_csv_path", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("btt_jobs", "weights_csv_path", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("btt_jobs", "failed_csv_path", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("btt_jobs", "summary_json", f"{_dialect_text_type()} DEFAULT '{{}}'")
+
+    # audit_logs
+    _add_column_if_missing("audit_logs", "event_type", _dialect_text_type())
+    _add_column_if_missing("audit_logs", "actor_email", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("audit_logs", "payload", f"{_dialect_text_type()} DEFAULT '{{}}'")
+    _add_column_if_missing("audit_logs", "created_at", _dialect_datetime_type())
+
+    # app_kv
+    _add_column_if_missing("app_kv", "key", _dialect_text_type())
+    _add_column_if_missing("app_kv", "value", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("app_kv", "updated_at", _dialect_datetime_type())
+
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE btt_jobs SET stdout_log = '' WHERE stdout_log IS NULL"))
+        conn.execute(text("UPDATE btt_jobs SET error_log = '' WHERE error_log IS NULL"))
+        conn.execute(text("UPDATE btt_jobs SET summary_json = '{}' WHERE summary_json IS NULL"))
+        conn.execute(text("UPDATE btt_jobs SET status = 'queued' WHERE status IS NULL"))
+        conn.execute(text("UPDATE app_kv SET value = '' WHERE value IS NULL"))
 
 
 def init_app(db: Session) -> None:
     ensure_storage()
-    Base.metadata.create_all(bind=engine)
-    _migrate_sqlite_app_db()
+    _ensure_schema_compat()
     ensure_admin(db)
     ensure_site_copy(db)
 
@@ -166,8 +122,10 @@ def ensure_admin(db: Session) -> None:
         db.add(user)
         db.commit()
         return
+
     user.password_hash = get_password_hash(settings.ADMIN_PASSWORD)
     user.is_admin = True
+    user.is_active = True
     user.subscription_status = 'active'
     user.subscription_plan = 'owner'
     db.commit()
