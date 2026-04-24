@@ -40,6 +40,10 @@ settings = get_settings()
 app = FastAPI(title=settings.APP_NAME)
 
 
+def _tail(value: str | None, size: int) -> str:
+    return (value or "")[-size:]
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -170,8 +174,8 @@ def public_btt_latest(db: Session = Depends(get_db)):
             "status": job.status,
             "created_at": job.created_at,
             "summary": summary,
-            "stdout_log": job.stdout_log[-6000:],
-            "error_log": job.error_log[-4000:],
+            "stdout_log": _tail(job.stdout_log, 6000),
+            "error_log": _tail(job.error_log, 4000),        
         },
     }
 
@@ -316,8 +320,8 @@ def admin_list_btt_jobs(admin: User = Depends(get_current_admin), db: Session = 
                 "status": job.status,
                 "created_at": job.created_at,
                 "summary": summary,
-                "stdout_log": job.stdout_log[-5000:],
-                "error_log": job.error_log[-3000:],
+                "stdout_log": _tail(job.stdout_log, 5000),
+                "error_log": _tail(job.error_log, 3000),            
             }
         )
 

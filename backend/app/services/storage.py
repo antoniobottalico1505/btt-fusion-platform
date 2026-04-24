@@ -101,6 +101,106 @@ def _ensure_microcap_db(db_path: Path) -> None:
         conn.close()
 
 
+def _sqlite_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table})")
+    rows = cur.fetchall()
+    return any(str(row[1]) == column for row in rows)
+
+
+def _migrate_existing_microcap_db(db_path: Path) -> None:
+    if not db_path.exists():
+        return
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS state (
+            k TEXT PRIMARY KEY,
+            v TEXT NOT NULL
+        )
+        """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts INTEGER NOT NULL,
+            mode TEXT NOT NULL,
+            chain TEXT NOT NULL,
+            token TEXT NOT NULL,
+            pair TEXT,
+            side TEXT NOT NULL,
+            px_usd REAL NOT NULL,
+            qty REAL NOT NULL,
+            usd_value REAL NOT NULL,
+            reason TEXT
+        )
+        """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS positions (
+            key TEXT PRIMARY KEY,
+            chain TEXT NOT NULL,
+            token TEXT NOT NULL,
+            pair TEXT,
+            entry_px REAL NOT NULL,
+            qty REAL NOT NULL,
+            entry_ts INTEGER NOT NULL,
+            peak_px REAL NOT NULL,
+            avg_px REAL NOT NULL,
+            pyramids_done INTEGER NOT NULL DEFAULT 0,
+            tp1_done INTEGER NOT NULL DEFAULT 0
+        )
+        """)
+
+        if not _sqlite_has_column(conn, "positions", "trail_armed_ts"):
+            cur.execute("ALTER TABLE positions ADD COLUMN trail_armed_ts INTEGER NOT NULL DEFAULT 0")
+        if not _sqlite_has_column(conn, "positions", "trail_step_n"):
+            cur.execute("ALTER TABLE positions ADD COLUMN trail_step_n INTEGER NOT NULL DEFAULT 0")
+        if not _sqlite_has_column(conn, "positions", "trail_stop_px"):
+            cur.execute("ALTER TABLE positions ADD COLUMN trail_stop_px REAL NOT NULL DEFAULT 0")
+        if not _sqlite_has_column(conn, "positions", "trail_breach_n"):
+            cur.execute("ALTER TABLE positions ADD COLUMN trail_breach_n INTEGER NOT NULL DEFAULT 0")
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS watchlist (
+            key TEXT PRIMARY KEY,
+            chain TEXT NOT NULL,
+            token TEXT NOT NULL,
+            added_ts INTEGER NOT NULL,
+            pair TEXT,
+            score REAL,
+            cooldown_until INTEGER
+        )
+        """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS snapshots (
+            ts INTEGER NOT NULL,
+            key TEXT NOT NULL,
+            chain TEXT NOT NULL,
+            token TEXT NOT NULL,
+            price_usd REAL NOT NULL,
+            liq_usd REAL,
+            vol_m5 REAL,
+            txns_m5 INTEGER,
+            fdv REAL,
+            score REAL,
+            PRIMARY KEY (ts, key)
+        )
+        """)
+
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_key_ts ON snapshots(key, ts)")
+        cur.execute("INSERT OR IGNORE INTO state (k, v) VALUES (?, ?)", ("cash", json.dumps(200.0)))
+        cur.execute("INSERT OR IGNORE INTO state (k, v) VALUES (?, ?)", ("peak_equity", json.dumps(200.0)))
+
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def ensure_storage() -> None:
     for path in [
         ROOT,
@@ -126,7 +226,7 @@ def ensure_storage() -> None:
     db_path = PRIVATE / "microcap" / "bot.db"
     if not db_path.exists():
         _ensure_microcap_db(db_path)
-
+    _migrate_existing_microcap_db(db_path)
 
 def read_text(path: Path, default: str = "") -> str:
     if not path.exists():

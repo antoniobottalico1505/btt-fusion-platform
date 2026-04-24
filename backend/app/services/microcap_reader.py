@@ -1,6 +1,5 @@
 import json
 import sqlite3
-from pathlib import Path
 from typing import Any
 
 from app.services.storage import PRIVATE
@@ -12,6 +11,12 @@ def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH), timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table})")
+    return any(str(row['name']) == column for row in cur.fetchall())
 
 
 def _state(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -52,15 +57,38 @@ def _trades(conn: sqlite3.Connection, limit: int = 60) -> list[dict[str, Any]]:
 
 def _positions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     cur = conn.cursor()
+
+    if all(
+        _has_column(conn, 'positions', col)
+        for col in ['trail_armed_ts', 'trail_step_n', 'trail_stop_px', 'trail_breach_n']
+    ):
+        cur.execute(
+            '''
+            SELECT key, chain, token, pair, entry_px, qty, entry_ts, peak_px, avg_px, pyramids_done, tp1_done,
+                   trail_armed_ts, trail_step_n, trail_stop_px, trail_breach_n
+            FROM positions
+            ORDER BY entry_ts DESC
+            '''
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     cur.execute(
         '''
-        SELECT key, chain, token, pair, entry_px, qty, entry_ts, peak_px, avg_px, pyramids_done, tp1_done,
-               trail_armed_ts, trail_step_n, trail_stop_px, trail_breach_n
+        SELECT key, chain, token, pair, entry_px, qty, entry_ts, peak_px, avg_px, pyramids_done, tp1_done
         FROM positions
         ORDER BY entry_ts DESC
         '''
     )
-    return [dict(row) for row in cur.fetchall()]
+
+    rows = []
+    for row in cur.fetchall():
+        item = dict(row)
+        item['trail_armed_ts'] = 0
+        item['trail_step_n'] = 0
+        item['trail_stop_px'] = 0.0
+        item['trail_breach_n'] = 0
+        rows.append(item)
+    return rows
 
 
 def _watchlist(conn: sqlite3.Connection, limit: int = 80) -> list[dict[str, Any]]:
@@ -116,16 +144,32 @@ def _equity_curve(state: dict[str, Any], trades: list[dict[str, Any]]) -> list[d
     return rows[-60:]
 
 
+def _empty_dashboard() -> dict[str, Any]:
+    return {
+        'overview': {
+            'cash': 0.0,
+            'peak_equity': 0.0,
+            'drawdown_pct': 0.0,
+            'positions_count': 0,
+            'watchlist_count': 0,
+            'snapshots_count': 0,
+            'trades_count': 0,
+            'day_entries': 0,
+            'day_exits': 0,
+            'latest_snapshot_ts': 0,
+            'entry_last': None,
+        },
+        'trades': [],
+        'positions': [],
+        'watchlist': [],
+        'top_candidates': [],
+        'equity_curve': [],
+    }
+
+
 def read_dashboard() -> dict[str, Any]:
     if not DB_PATH.exists():
-        return {
-            'overview': {'cash': 0.0, 'peak_equity': 0.0, 'drawdown_pct': 0.0, 'positions_count': 0, 'watchlist_count': 0, 'snapshots_count': 0, 'trades_count': 0, 'day_entries': 0, 'day_exits': 0, 'latest_snapshot_ts': 0, 'entry_last': None},
-            'trades': [],
-            'positions': [],
-            'watchlist': [],
-            'top_candidates': [],
-            'equity_curve': [],
-        }
+        return _empty_dashboard()
 
     conn = _connect()
     try:
@@ -134,11 +178,13 @@ def read_dashboard() -> dict[str, Any]:
         positions = _positions(conn)
         watchlist = _watchlist(conn)
         snaps = _latest_snapshots(conn)
+
         candidates = sorted(
             [x for x in watchlist if x.get('price_usd')],
             key=lambda item: ((item.get('score') is not None), item.get('score') or 0, item.get('liq_usd') or 0),
             reverse=True,
         )[:20]
+
         return {
             'overview': _overview(state, trades, positions, watchlist, snaps),
             'trades': trades,
@@ -147,5 +193,7 @@ def read_dashboard() -> dict[str, Any]:
             'top_candidates': candidates,
             'equity_curve': _equity_curve(state, trades),
         }
+    except Exception:
+        return _empty_dashboard()
     finally:
         conn.close()
