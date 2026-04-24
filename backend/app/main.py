@@ -203,9 +203,11 @@ def user_btt_run(user: User = Depends(get_current_user), db: Session = Depends(g
     if (n or 0) >= settings.BTT_MAX_RUNS_PER_USER_PER_DAY and not user.is_admin:
         raise HTTPException(status_code=429, detail="Limite giornaliero run raggiunto")
 
-    job = create_btt_job(db, user.id, SessionLocal)
+    try:
+        job = create_btt_job(db, user.id, SessionLocal)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"BTT run bootstrap failed: {type(exc).__name__}: {exc}")
     return {"job_id": job.id, "status": job.status}
-
 
 @app.post("/api/billing/checkout")
 def billing_checkout(payload: StripeCheckoutIn, user: User = Depends(get_current_user)):
@@ -299,9 +301,11 @@ def admin_put_btt_preset(payload: AdminJsonUpdate, admin: User = Depends(get_cur
 
 @app.post("/api/admin/btt/run")
 def admin_run_btt(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
-    job = create_btt_job(db, admin.id, SessionLocal)
+    try:
+        job = create_btt_job(db, admin.id, SessionLocal)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"BTT admin run failed: {type(exc).__name__}: {exc}")
     return {"job_id": job.id, "status": job.status}
-
 
 @app.get("/api/admin/btt/jobs")
 def admin_list_btt_jobs(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
