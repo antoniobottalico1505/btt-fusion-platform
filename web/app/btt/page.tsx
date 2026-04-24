@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { API_BASE, apiFetch } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 
 export default function BttPage() {
   const [data, setData] = useState<any>(null)
@@ -49,7 +49,11 @@ export default function BttPage() {
           <div className="card">
             <div className="row">
               <h2 className="section-title">Top ranking</h2>
-              {latest?.id ? <a href={`${API_BASE}/api/public/btt/report/${latest.id}`} target="_blank">Apri report HTML</a> : null}
+              {latest?.id ? (
+                <a href={`/api/public/btt/report/${latest.id}`} target="_blank" rel="noreferrer">
+                  Apri report HTML
+                </a>
+              ) : null}
             </div>
             <div className="table-wrap"><table><thead><tr>{topRows[0] ? Object.keys(topRows[0]).map((k) => <th key={k}>{k}</th>) : <th>Nessun dato</th>}</tr></thead><tbody>
               {topRows.map((row: any, idx: number) => <tr key={idx}>{Object.keys(topRows[0] || {}).map((k) => <td key={k}>{String(row[k] ?? '')}</td>)}</tr>)}
