@@ -20,7 +20,7 @@ export default function BttPage() {
 
   useEffect(() => {
     load()
-    const t = setInterval(load, 5000)
+    const t = setInterval(load, 3000)
     return () => clearInterval(t)
   }, [])
 
@@ -33,7 +33,7 @@ export default function BttPage() {
         { method: 'POST' },
         true
       )
-      setMsg(`Run avviato: job #${res.job_id}`)
+      setMsg(`Run demo avviato: job #${res.job_id}`)
       await load()
     } catch (e: any) {
       setErr(e.message)
@@ -71,6 +71,7 @@ export default function BttPage() {
                 id: latest?.id,
                 status: latest?.status,
                 created_at: latest?.created_at,
+                mode: latest?.summary?.mode,
                 return_code: latest?.summary?.return_code,
                 preset: latest?.summary?.preset,
               }, null, 2)}</pre>

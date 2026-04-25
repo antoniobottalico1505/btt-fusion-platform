@@ -18,6 +18,20 @@ _active_jobs_lock = threading.Lock()
 _active_jobs: set[int] = set()
 
 
+def _make_fast_demo_preset(base: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'countries': base.get('demo_countries') or 'united states,italy,germany',
+        'all_countries': False,
+        'max_per_country': min(int(base.get('max_per_country') or 8), 8),
+        'shortlist_multiplier': min(int(base.get('shortlist_multiplier') or 2), 2),
+        'workers': max(4, min(int(base.get('workers') or 8), 8)),
+        'top': min(int(base.get('top') or 12), 12),
+        'portfolio_size': min(int(base.get('portfolio_size') or 6), 6),
+        'emerging_only': False,
+        'technical_refine': False,
+    }
+
+
 def _build_args(preset: dict[str, Any], run_dir: Path) -> list[str]:
     args = [
         sys.executable,
@@ -61,7 +75,7 @@ def _set_job_fields(db: Session, job_id: int, **fields) -> BttJob | None:
     return job
 
 
-def _run_job(job_id: int, db_factory):
+def _run_job(job_id: int, db_factory, fast_demo: bool = False):
     db: Session = db_factory()
     proc: subprocess.Popen | None = None
 
@@ -72,6 +86,8 @@ def _run_job(job_id: int, db_factory):
 
         run_dir = Path(job.run_dir)
         preset = get_btt_preset()
+        if fast_demo:
+            preset = _make_fast_demo_preset(preset)
 
         _set_job_fields(
             db,
@@ -79,6 +95,7 @@ def _run_job(job_id: int, db_factory):
             status='running',
             stdout_log='',
             error_log='',
+            summary_json=json.dumps({'preset': preset, 'mode': 'fast_demo' if fast_demo else 'full'}, ensure_ascii=False),
         )
 
         cmd = _build_args(preset, run_dir)
@@ -119,6 +136,7 @@ def _run_job(job_id: int, db_factory):
 
         summary = {
             'preset': preset,
+            'mode': 'fast_demo' if fast_demo else 'full',
             'top_rows': _read_csv_rows(top_csv, limit=25),
             'portfolio_rows': _read_csv_rows(weights_csv, limit=20),
             'failed_rows': _read_csv_rows(failed_csv, limit=25),
@@ -158,7 +176,7 @@ def _run_job(job_id: int, db_factory):
         db.close()
 
 
-def create_btt_job(db: Session, user_id: int | None, db_factory) -> BttJob:
+def create_btt_job(db: Session, user_id: int | None, db_factory, fast_demo: bool = False) -> BttJob:
     now = datetime.now(timezone.utc)
     run_dir = PRIVATE / 'btt_runs' / now.strftime('%Y%m%d_%H%M%S_%f')
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -171,6 +189,6 @@ def create_btt_job(db: Session, user_id: int | None, db_factory) -> BttJob:
     with _active_jobs_lock:
         _active_jobs.add(job.id)
 
-    thread = threading.Thread(target=_run_job, args=(job.id, db_factory), daemon=True)
+    thread = threading.Thread(target=_run_job, args=(job.id, db_factory, fast_demo), daemon=True)
     thread.start()
     return job

@@ -26,3 +26,9 @@ class AdminJsonUpdate(BaseModel):
 
 class MicrocapControlIn(BaseModel):
     mode: str | None = None
+
+
+class ExternalMicrocapHeartbeatIn(BaseModel):
+    api_key: str
+    process: dict = Field(default_factory=dict)
+    dashboard: dict = Field(default_factory=dict)

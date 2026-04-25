@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     STRIPE_PRICE_YEARLY: str = ""
     STRIPE_SUCCESS_URL: str = "http://localhost:3000/dashboard?checkout=success"
     STRIPE_CANCEL_URL: str = "http://localhost:3000/pricing?checkout=cancel"
+    EXTERNAL_MICROCAP_API_KEY: str = ""
+    EXTERNAL_MICROCAP_TTL_SEC: int = 90
 
     @field_validator("MICROCAP_PUBLIC_MODE")
     @classmethod

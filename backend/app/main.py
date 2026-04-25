@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -15,6 +16,7 @@ from app.models import AppKV, BttJob, User
 from app.schemas import (
     AdminJsonUpdate,
     AdminTextUpdate,
+    ExternalMicrocapHeartbeatIn,
     LoginIn,
     MicrocapControlIn,
     RegisterIn,
@@ -42,6 +44,42 @@ app = FastAPI(title=settings.APP_NAME)
 
 def _tail(value: str | None, size: int) -> str:
     return (value or "")[-size:]
+
+
+def _json_value(row: AppKV | None, default):
+    if not row or not row.value:
+        return default
+    try:
+        return json.loads(row.value)
+    except Exception:
+        return default
+
+
+def _upsert_kv(db: Session, key: str, value) -> None:
+    row = db.scalar(select(AppKV).where(AppKV.key == key))
+    payload = json.dumps(value, ensure_ascii=False)
+    if not row:
+        db.add(AppKV(key=key, value=payload))
+    else:
+        row.value = payload
+    db.commit()
+
+
+def _load_external_microcap(db: Session):
+    state_row = db.scalar(select(AppKV).where(AppKV.key == "external_microcap_state"))
+    dash_row = db.scalar(select(AppKV).where(AppKV.key == "external_microcap_dashboard"))
+
+    state = _json_value(state_row, {})
+    dashboard = _json_value(dash_row, {})
+
+    received = float(state.get("received_at_epoch") or 0)
+    if not received:
+        return None, None
+
+    if (time.time() - received) > settings.EXTERNAL_MICROCAP_TTL_SEC:
+        return None, None
+
+    return state, dashboard
 
 
 app.add_middleware(
@@ -147,9 +185,17 @@ def public_site(db: Session = Depends(get_db)):
 
 
 @app.get("/api/public/microcap")
-def public_microcap():
-    status = microcap_manager.status()
+def public_microcap(db: Session = Depends(get_db)):
+    external_state, external_dashboard = _load_external_microcap(db)
+    if external_state is not None:
+        return {
+            "process": external_state,
+            "dashboard": external_dashboard or {},
+            "public_mode": external_state.get("mode") or settings.MICROCAP_PUBLIC_MODE,
+            "live_available": settings.MICROCAP_LIVE_ENABLED,
+        }
 
+    status = microcap_manager.status()
     if settings.MICROCAP_AUTO_START and not status.get("running"):
         status = microcap_manager.start(mode=settings.MICROCAP_PUBLIC_MODE)
 
@@ -159,6 +205,24 @@ def public_microcap():
         "public_mode": settings.MICROCAP_PUBLIC_MODE,
         "live_available": settings.MICROCAP_LIVE_ENABLED,
     }
+
+
+@app.post("/api/external/microcap/heartbeat")
+def external_microcap_heartbeat(payload: ExternalMicrocapHeartbeatIn, db: Session = Depends(get_db)):
+    if not settings.EXTERNAL_MICROCAP_API_KEY or payload.api_key != settings.EXTERNAL_MICROCAP_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid external microcap api key")
+
+    process = dict(payload.process or {})
+    process["running"] = bool(process.get("running", True))
+    process["source"] = "external_pc"
+    process["received_at_epoch"] = time.time()
+
+    dashboard = dict(payload.dashboard or {})
+
+    _upsert_kv(db, "external_microcap_state", process)
+    _upsert_kv(db, "external_microcap_dashboard", dashboard)
+
+    return {"ok": True}
 
 
 @app.get("/api/public/btt/latest")
@@ -209,7 +273,7 @@ def user_btt_run(user: User = Depends(get_current_user), db: Session = Depends(g
         raise HTTPException(status_code=429, detail="Limite giornaliero run raggiunto")
 
     try:
-        job = create_btt_job(db, user.id, SessionLocal)
+        job = create_btt_job(db, user.id, SessionLocal, fast_demo=True)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"BTT run bootstrap failed: {type(exc).__name__}: {exc}")
     return {"job_id": job.id, "status": job.status}
@@ -307,7 +371,7 @@ def admin_put_btt_preset(payload: AdminJsonUpdate, admin: User = Depends(get_cur
 @app.post("/api/admin/btt/run")
 def admin_run_btt(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     try:
-        job = create_btt_job(db, admin.id, SessionLocal)
+        job = create_btt_job(db, admin.id, SessionLocal, fast_demo=False)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"BTT admin run failed: {type(exc).__name__}: {exc}")
     return {"job_id": job.id, "status": job.status}

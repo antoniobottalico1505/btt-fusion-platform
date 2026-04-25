@@ -20,7 +20,7 @@ export default function MicrocapPage() {
 
   useEffect(() => {
     load()
-    const t = setInterval(load, 6000)
+    const t = setInterval(load, 3000)
     return () => clearInterval(t)
   }, [])
 
@@ -35,28 +35,27 @@ export default function MicrocapPage() {
       <div className="row">
         <div>
           <h1 className="section-title">Microcap Bot</h1>
-          <p className="section-sub">Demo paper osservabile. Parametri e config rimangono lato server.</p>
+          <p className="section-sub">Demo osservabile. Stato e dashboard possono arrivare dal server o dal tuo PC via heartbeat.</p>
         </div>
         <span className="pill">process {process.running ? 'running' : 'stopped'}</span>
       </div>
 
       {err ? <div className="bad">{err}</div> : null}
 
-      {!process.running ? (
-        <div className="card stack">
-          <h2 className="section-title">Stato processo</h2>
-          <pre className="log">{JSON.stringify({
-            running: process.running ?? false,
-            pid: process.pid ?? null,
-            exit_code: process.exit_code ?? null,
-            last_error: process.last_error || '',
-            mode: process.mode || '',
-            uptime_sec: process.uptime_sec || 0,
-          }, null, 2)}</pre>
-          <h3 className="section-title">Log microcap</h3>
-          <pre className="log">{process.log_tail || 'Nessun log disponibile'}</pre>
-        </div>
-      ) : null}
+      <div className="card stack">
+        <h2 className="section-title">Stato processo</h2>
+        <pre className="log">{JSON.stringify({
+          running: process.running ?? false,
+          pid: process.pid ?? null,
+          exit_code: process.exit_code ?? null,
+          source: process.source || 'server',
+          mode: process.mode || '',
+          uptime_sec: process.uptime_sec || 0,
+          last_error: process.last_error || '',
+        }, null, 2)}</pre>
+        <h3 className="section-title">Log microcap</h3>
+        <pre className="log">{process.log_tail || 'Nessun log disponibile'}</pre>
+      </div>
 
       <div className="kpi-grid">
         <div className="kpi"><span className="muted">Cash</span><strong>${overview?.cash?.toFixed?.(2) || '0.00'}</strong></div>
