@@ -1,35 +1,42 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
-import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import {
+  LineChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
 export default function DashboardPage() {
   const [crypto, setCrypto] = useState<any>(null)
   const [stock, setStock] = useState<any>(null)
+  const [combined, setCombined] = useState<any>(null)
 
   useEffect(() => {
     apiFetch('/api/public/microcap').then(setCrypto).catch(() => null)
     apiFetch('/api/public/btt/latest').then(setStock).catch(() => null)
-    apiFetch('/api/public/combined/summary').then(setCombined)
+    apiFetch('/api/public/combined/summary').then(setCombined).catch(() => null)
   }, [])
 
   const cryptoSeries = crypto?.dashboard?.equity_curve || []
   const stockRows = stock?.latest?.summary?.top_rows || []
 
   const stockSeries = stockRows.slice(0, 12).map((row: any, idx: number) => ({
-    ts: idx + 1,
+    label: row?.ticker || row?.symbol || row?.name || `Stock ${idx + 1}`,
     stock: idx + 1,
   }))
 
-  const combined = useMemo(() => {
-    const maxLen = Math.max(cryptoSeries.length, stockSeries.length)
-    return Array.from({ length: maxLen }).map((_, idx) => ({
-      label: `${idx + 1}`,
-      crypto: cryptoSeries[idx]?.equity ?? null,
-      stock: stockSeries[idx]?.stock ?? null,
-    }))
-  }, [cryptoSeries, stockSeries])
+  const combinedSimple = Array.from({
+    length: Math.max(cryptoSeries.length, stockSeries.length),
+  }).map((_, idx) => ({
+    label: `${idx + 1}`,
+    crypto: cryptoSeries[idx]?.equity ?? null,
+    stock: stockSeries[idx]?.stock ?? null,
+  }))
 
   return (
     <div className="shell section stack">
@@ -42,7 +49,7 @@ export default function DashboardPage() {
         <h2 className="section-title">Grafico aggregato settori</h2>
         <div style={{ width: '100%', height: 320 }}>
           <ResponsiveContainer>
-            <LineChart data={combined}>
+            <LineChart data={combinedSimple}>
               <XAxis dataKey="label" />
               <YAxis />
               <Tooltip />
@@ -52,22 +59,22 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
       </div>
-    </div>
 
-<div className="card">
-  <h2 className="section-title">Confronto BTTcrypto + BTTstock</h2>
-  <div style={{ width: '100%', height: 340 }}>
-    <ResponsiveContainer>
-      <LineChart data={combined?.combined?.chart || []}>
-        <XAxis dataKey="x" />
-        <YAxis />
-        <Tooltip />
-        <Line type="monotone" dataKey="crypto_profit_money" strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="stock_profit_money" strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="combined_profit_money" strokeWidth={2} dot={false} />
-      </LineChart>
-    </ResponsiveContainer>
-  </div>
-</div>
+      <div className="card">
+        <h2 className="section-title">Confronto BTTcrypto + BTTstock</h2>
+        <div style={{ width: '100%', height: 340 }}>
+          <ResponsiveContainer>
+            <LineChart data={combined?.combined?.chart || []}>
+              <XAxis dataKey="x" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="crypto_profit_money" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="stock_profit_money" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="combined_profit_money" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
   )
 }
