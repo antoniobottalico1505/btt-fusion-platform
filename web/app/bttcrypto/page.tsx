@@ -1,12 +1,18 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { EquityChart } from '@/components/Charts'
 import { apiFetch } from '@/lib/api'
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts'
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from 'recharts'
 
 function pct(v: number) {
-  return `${(v * 100).toFixed(2)}%`
+  return `${Number(v || 0).toFixed(2)}%`
 }
 
 export default function BTTcryptoPage() {
@@ -34,24 +40,22 @@ export default function BTTcryptoPage() {
   const trades = dashboard?.trades || []
   const positions = dashboard?.positions || []
   const watchlist = dashboard?.top_candidates || []
+  const summary = data?.summary || {}
 
-  const tradePnL = useMemo(() => {
-    const sells = trades.filter((x: any) => ['sell', 'exit'].includes(String(x.side || '').toLowerCase()))
-    const total = sells.reduce((a: number, x: any) => a + Number(x.usd_value || 0), 0)
-    return total
+  const closedTrades = useMemo(() => {
+    return trades.filter((x: any) =>
+      ['sell', 'exit'].includes(String(x?.side || '').toLowerCase())
+    )
   }, [trades])
-
-  const equitySeries = dashboard?.equity_curve || []
-  const firstEq = equitySeries[0]?.equity || 0
-  const lastEq = equitySeries[equitySeries.length - 1]?.equity || 0
-  const totalPct = firstEq > 0 ? (lastEq - firstEq) / firstEq : 0
 
   return (
     <div className="shell section stack">
       <div className="row">
         <div>
           <h1 className="section-title">BTTcrypto</h1>
-          <p className="section-sub">Analisi crypto osservabile, andamento operativo e risultati aggregati.</p>
+          <p className="section-sub">
+            Analisi crypto osservabile, andamento operativo e risultati aggregati.
+          </p>
         </div>
         <span className="pill">{data?.process?.running ? 'Attivo' : 'Non attivo'}</span>
       </div>
@@ -59,15 +63,71 @@ export default function BTTcryptoPage() {
       {err ? <div className="bad">{err}</div> : null}
 
       <div className="kpi-grid">
-        <div className="kpi"><span className="muted">Cash disponibile</span><strong>${overview?.cash?.toFixed?.(2) || '0.00'}</strong></div>
-        <div className="kpi"><span className="muted">Rendimento stimato</span><strong>{pct(totalPct || 0)}</strong></div>
-        <div className="kpi"><span className="muted">Operazioni chiuse</span><strong>{trades.length}</strong></div>
-        <div className="kpi"><span className="muted">Posizioni aperte</span><strong>{positions.length}</strong></div>
+        <div className="kpi">
+          <span className="muted">Cash disponibile</span>
+          <strong>${overview?.cash?.toFixed?.(2) || '0.00'}</strong>
+        </div>
+        <div className="kpi">
+          <span className="muted">Rendimento stimato</span>
+          <strong>{pct(summary?.profit_pct || 0)}</strong>
+        </div>
+        <div className="kpi">
+          <span className="muted">Operazioni chiuse</span>
+          <strong>{closedTrades.length}</strong>
+        </div>
+        <div className="kpi">
+          <span className="muted">Posizioni aperte</span>
+          <strong>{positions.length}</strong>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="section-title">Performance BTTcrypto</h2>
+
+        <div className="kpi-grid">
+          <div className="kpi">
+            <span className="muted">Profitto / Perdita</span>
+            <strong>${summary?.profit_money?.toFixed?.(2) || '0.00'}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Rendimento %</span>
+            <strong>{summary?.profit_pct?.toFixed?.(2) || '0.00'}%</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Operazioni positive</span>
+            <strong>{summary?.wins ?? 0}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Operazioni negative</span>
+            <strong>{summary?.losses ?? 0}</strong>
+          </div>
+        </div>
+
+        <div style={{ width: '100%', height: 320, marginTop: 16 }}>
+          <ResponsiveContainer>
+            <LineChart data={summary?.chart || []}>
+              <XAxis dataKey="x" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="profit_money" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="profit_pct" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       <div className="card">
         <h2 className="section-title">Andamento BTTcrypto</h2>
-        <EquityChart data={equitySeries} />
+        <div style={{ width: '100%', height: 300 }}>
+          <ResponsiveContainer>
+            <LineChart data={dashboard?.equity_curve || []}>
+              <XAxis dataKey="ts" hide />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="equity" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       <div className="grid-2">
@@ -76,24 +136,38 @@ export default function BTTcryptoPage() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Asset</th><th>Chain</th><th>Entry</th><th>Media</th><th>Massimo</th><th>Stato</th></tr>
+                <tr>
+                  <th>Asset</th>
+                  <th>Chain</th>
+                  <th>Entry</th>
+                  <th>Media</th>
+                  <th>Massimo</th>
+                  <th>Stato</th>
+                </tr>
               </thead>
               <tbody>
                 {positions.length === 0 ? (
-                  <tr><td colSpan={6}>Nessuna posizione aperta</td></tr>
-                ) : positions.map((row: any) => {
-                  const gain = row.entry_px > 0 ? ((Number(row.peak_px || 0) - Number(row.entry_px || 0)) / Number(row.entry_px || 1)) : 0
-                  return (
-                    <tr key={row.key}>
-                      <td>{row.token}</td>
-                      <td>{row.chain}</td>
-                      <td>{row.entry_px}</td>
-                      <td>{row.avg_px}</td>
-                      <td>{row.peak_px}</td>
-                      <td>{pct(gain)}</td>
-                    </tr>
-                  )
-                })}
+                  <tr>
+                    <td colSpan={6}>Nessuna posizione aperta</td>
+                  </tr>
+                ) : (
+                  positions.map((row: any) => {
+                    const entry = Number(row?.entry_px || 0)
+                    const peak = Number(row?.peak_px || 0)
+                    const gain = entry > 0 ? ((peak - entry) / entry) * 100 : 0
+
+                    return (
+                      <tr key={row.key}>
+                        <td>{row.token}</td>
+                        <td>{row.chain}</td>
+                        <td>{row.entry_px}</td>
+                        <td>{row.avg_px}</td>
+                        <td>{row.peak_px}</td>
+                        <td>{gain.toFixed(2)}%</td>
+                      </tr>
+                    )
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -104,76 +178,76 @@ export default function BTTcryptoPage() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Asset</th><th>Chain</th><th>Score</th><th>Prezzo</th><th>Liquidità</th><th>Volume 5m</th></tr>
+                <tr>
+                  <th>Asset</th>
+                  <th>Chain</th>
+                  <th>Score</th>
+                  <th>Prezzo</th>
+                  <th>Liquidità</th>
+                  <th>Volume 5m</th>
+                </tr>
               </thead>
               <tbody>
                 {watchlist.length === 0 ? (
-                  <tr><td colSpan={6}>Nessuna opportunità disponibile</td></tr>
-                ) : watchlist.map((row: any) => (
-                  <tr key={row.key}>
-                    <td>{row.token}</td>
-                    <td>{row.chain}</td>
-                    <td>{row.score ?? '-'}</td>
-                    <td>{row.price_usd ?? '-'}</td>
-                    <td>{row.liq_usd ?? '-'}</td>
-                    <td>{row.vol_m5 ?? '-'}</td>
+                  <tr>
+                    <td colSpan={6}>Nessuna opportunità disponibile</td>
                   </tr>
-                ))}
+                ) : (
+                  watchlist.map((row: any) => (
+                    <tr key={row.key}>
+                      <td>{row.token}</td>
+                      <td>{row.chain}</td>
+                      <td>{row.score ?? '-'}</td>
+                      <td>{row.price_usd ?? '-'}</td>
+                      <td>{row.liq_usd ?? '-'}</td>
+                      <td>{row.vol_m5 ?? '-'}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-
       <div className="card">
         <h2 className="section-title">Storico operativo</h2>
-        <p className="section-sub">Operazioni in profitto o perdita visualizzate nel tempo.</p>
+        <p className="section-sub">
+          Operazioni in profitto o perdita visualizzate nel tempo.
+        </p>
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Data</th><th>Tipo</th><th>Asset</th><th>Chain</th><th>Valore</th><th>Motivo</th></tr>
+              <tr>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Asset</th>
+                <th>Chain</th>
+                <th>Valore</th>
+                <th>Motivo</th>
+              </tr>
             </thead>
             <tbody>
               {trades.length === 0 ? (
-                <tr><td colSpan={6}>Nessuna operazione disponibile</td></tr>
-              ) : trades.map((row: any, idx: number) => (
-                <tr key={`${row.ts}-${idx}`}>
-                  <td>{row.ts ? new Date(row.ts * 1000).toLocaleString() : '-'}</td>
-                  <td>{row.side}</td>
-                  <td>{row.token}</td>
-                  <td>{row.chain}</td>
-                  <td>{row.usd_value}</td>
-                  <td>{row.reason}</td>
+                <tr>
+                  <td colSpan={6}>Nessuna operazione disponibile</td>
                 </tr>
-              ))}
+              ) : (
+                trades.map((row: any, idx: number) => (
+                  <tr key={`${row.ts}-${idx}`}>
+                    <td>{row.ts ? new Date(row.ts * 1000).toLocaleString() : '-'}</td>
+                    <td>{row.side}</td>
+                    <td>{row.token}</td>
+                    <td>{row.chain}</td>
+                    <td>{row.usd_value}</td>
+                    <td>{row.reason}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
     </div>
-
-
-<div className="card">
-  <h2 className="section-title">Performance BTTcrypto</h2>
-  <div className="kpi-grid">
-    <div className="kpi"><span className="muted">Profitto / Perdita</span><strong>${data?.summary?.profit_money?.toFixed?.(2) || '0.00'}</strong></div>
-    <div className="kpi"><span className="muted">Rendimento %</span><strong>{data?.summary?.profit_pct?.toFixed?.(2) || '0.00'}%</strong></div>
-    <div className="kpi"><span className="muted">Operazioni positive</span><strong>{data?.summary?.wins ?? 0}</strong></div>
-    <div className="kpi"><span className="muted">Operazioni negative</span><strong>{data?.summary?.losses ?? 0}</strong></div>
-  </div>
-
-  <div style={{ width: '100%', height: 320, marginTop: 16 }}>
-    <ResponsiveContainer>
-      <LineChart data={data?.summary?.chart || []}>
-        <XAxis dataKey="x" />
-        <YAxis />
-        <Tooltip />
-        <Line type="monotone" dataKey="profit_money" strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="profit_pct" strokeWidth={2} dot={false} />
-      </LineChart>
-    </ResponsiveContainer>
-  </div>
-</div>
   )
 }
