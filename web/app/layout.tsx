@@ -2,8 +2,8 @@ import './globals.css'
 import { Nav } from '@/components/Nav'
 
 export const metadata = {
-  title: 'BTT Fusion',
-  description: 'BTT Capital + Microcap Bot under one deployable product shell.',
+  title: 'BTTcapital',
+  description: 'BTTcapital unisce BTTcrypto e BTTstock in un’unica piattaforma premium.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

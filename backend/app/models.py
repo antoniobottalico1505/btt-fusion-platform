@@ -27,6 +27,12 @@ class User(Base):
     stripe_subscription_id: Mapped[str] = mapped_column(String(120), default='')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    accepted_terms_version: Mapped[str] = mapped_column(String(40), default='')
+    accepted_terms_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_verify_token: Mapped[str] = mapped_column(String(255), default='')
+    reset_password_token: Mapped[str] = mapped_column(String(255), default='')
+    reset_password_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     btt_jobs: Mapped[list['BttJob']] = relationship(back_populates='user')
 

@@ -15,18 +15,22 @@ export function Nav() {
     <div className="topbar">
       <div className="shell topbar-inner">
         <div className="brand">
-          <div className="brand-mark" />
+          <img src="/logo-mark.svg" alt="BTTcapital" style={{ width: 36, height: 36, borderRadius: 8 }} />
           <div>
-            <div>BTT Fusion</div>
-            <div className="muted" style={{ fontSize: 12 }}>BTT Capital + Microcap Bot</div>
+            <div>BTTcapital</div>
+            <div className="muted" style={{ fontSize: 12 }}>BTTcrypto + BTTstock</div>
           </div>
         </div>
+
         <div className="nav">
           <Link href="/">Home</Link>
           <Link href="/dashboard">Dashboard</Link>
-          <Link href="/microcap">Microcap</Link>
-          <Link href="/btt">BTT Capital</Link>
-          <Link href="/pricing">Pricing</Link>
+          <Link href="/bttcrypto">BTTcrypto</Link>
+          <Link href="/bttstock">BTTstock</Link>
+          <Link href="/pricing">Abbonamenti</Link>
+          <Link href="/faq">FAQ</Link>
+          <Link href="/policy">Policy</Link>
+          <Link href="/terms">Termini</Link>
           {me?.is_admin ? <Link href="/admin">Admin</Link> : null}
           {me ? <span className="pill">{me.email}</span> : <Link href="/login">Login</Link>}
         </div>

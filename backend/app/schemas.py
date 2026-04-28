@@ -32,3 +32,13 @@ class ExternalMicrocapHeartbeatIn(BaseModel):
     api_key: str
     process: dict = Field(default_factory=dict)
     dashboard: dict = Field(default_factory=dict)
+
+class AcceptTermsIn(BaseModel):
+    accepted: bool
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    password: str = Field(min_length=6)

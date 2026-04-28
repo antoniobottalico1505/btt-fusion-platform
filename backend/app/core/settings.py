@@ -30,12 +30,23 @@ class Settings(BaseSettings):
     CORS_ALLOW_ORIGIN_REGEX: str = r"^https://([a-z0-9-]+\.)*vercel\.app$"
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_PRICE_MONTHLY: str = ""
-    STRIPE_PRICE_YEARLY: str = ""
+    STRIPE_PRICE_CRYPTO_MONTHLY: str = ""
+    STRIPE_PRICE_CRYPTO_YEARLY: str = ""
+    STRIPE_PRICE_STOCK_MONTHLY: str = ""
+    STRIPE_PRICE_STOCK_YEARLY: str = ""
+    STRIPE_PRICE_BUNDLE_MONTHLY: str = ""
+    STRIPE_PRICE_BUNDLE_YEARLY: str = ""   
     STRIPE_SUCCESS_URL: str = "http://localhost:3000/dashboard?checkout=success"
     STRIPE_CANCEL_URL: str = "http://localhost:3000/pricing?checkout=cancel"
     EXTERNAL_MICROCAP_API_KEY: str = ""
     EXTERNAL_MICROCAP_TTL_SEC: int = 90
+    TERMS_VERSION: str = "2026-04"
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    APP_PUBLIC_URL: str = "http://localhost:3000"
 
     @field_validator("MICROCAP_PUBLIC_MODE")
     @classmethod

@@ -37,6 +37,8 @@ export default function LoginPage() {
         <button type="submit">Entra</button>
       </form>
       <p className="muted">Nessun account? <Link href="/register">Registrati</Link></p>
+      <p className="muted"><Link href="/forgot-password">Password dimenticata?</Link></p>
     </div>
+ 
   )
 }

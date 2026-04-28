@@ -1,6 +1,9 @@
 import json
 import threading
 import time
+import secrets
+from datetime import datetime, timedelta, timezone
+from app.services.mailer import send_email
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -37,6 +40,18 @@ from app.services.bootstrap import init_app
 from app.services.btt_runner import create_btt_job
 from app.services.engine_manager import microcap_manager
 from app.services.microcap_reader import read_dashboard
+from app.schemas import (
+    AcceptTermsIn,
+    AdminJsonUpdate,
+    AdminTextUpdate,
+    ExternalMicrocapHeartbeatIn,
+    ForgotPasswordIn,
+    LoginIn,
+    MicrocapControlIn,
+    RegisterIn,
+    ResetPasswordIn,
+    StripeCheckoutIn,
+)
 
 settings = get_settings()
 app = FastAPI(title=settings.APP_NAME)
@@ -82,6 +97,136 @@ def _load_external_microcap(db: Session):
     return state, dashboard
 
 
+def _safe_num(v, default=0.0):
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
+def _build_crypto_summary(dashboard: dict) -> dict:
+    overview = dict((dashboard or {}).get("overview") or {})
+    trades = list((dashboard or {}).get("trades") or [])
+    equity_curve = list((dashboard or {}).get("equity_curve") or [])
+
+    first_equity = _safe_num(equity_curve[0].get("equity")) if equity_curve else _safe_num(overview.get("cash"))
+    last_equity = _safe_num(equity_curve[-1].get("equity")) if equity_curve else _safe_num(overview.get("cash"))
+
+    pnl_money = last_equity - first_equity
+    pnl_pct = (pnl_money / first_equity) if first_equity > 0 else 0.0
+
+    closed_ops = [t for t in trades if str(t.get("side", "")).lower() in {"sell", "exit"}]
+    wins = 0
+    losses = 0
+    flat = 0
+
+    for t in closed_ops:
+        reason = str(t.get("reason") or "").lower()
+        usd = _safe_num(t.get("usd_value"))
+        # euristica: stop-loss => perdita; altrimenti consideriamo positivo se valore > 0
+        if "sl" in reason or "loss" in reason:
+            losses += 1
+        elif usd > 0:
+            wins += 1
+        elif usd < 0:
+            losses += 1
+        else:
+            flat += 1
+
+    chart = []
+    for idx, row in enumerate(equity_curve):
+        eq = _safe_num(row.get("equity"))
+        base = first_equity if first_equity > 0 else 1.0
+        chart.append({
+            "x": idx + 1,
+            "equity": eq,
+            "profit_money": eq - first_equity,
+            "profit_pct": ((eq - first_equity) / base) * 100.0,
+        })
+
+    return {
+        "profit_money": round(pnl_money, 2),
+        "profit_pct": round(pnl_pct * 100.0, 2),
+        "wins": wins,
+        "losses": losses,
+        "flat": flat,
+        "chart": chart,
+    }
+
+
+def _build_stock_summary(latest: dict | None) -> dict:
+    latest = latest or {}
+    summary = dict(latest.get("summary") or {})
+    top_rows = list(summary.get("top_rows") or [])
+    portfolio_rows = list(summary.get("portfolio_rows") or [])
+
+    def row_return_pct(row: dict) -> float:
+        if not isinstance(row, dict):
+            return 0.0
+        for k, v in row.items():
+            kk = str(k).lower()
+            if "return" in kk or "perf" in kk or "upside" in kk or "gain" in kk:
+                s = str(v).replace("%", "").strip()
+                try:
+                    return float(s)
+                except Exception:
+                    continue
+        return 0.0
+
+    perf_source = portfolio_rows if portfolio_rows else top_rows
+    points = []
+    gains = 0
+    losses = 0
+
+    for idx, row in enumerate(perf_source[:20]):
+        pct = row_return_pct(row)
+        money = pct  # proxy demo se non hai amount reale investito
+        if pct > 0:
+            gains += 1
+        elif pct < 0:
+            losses += 1
+
+        points.append({
+            "x": idx + 1,
+            "label": row.get("ticker") or row.get("symbol") or row.get("name") or f"Asset {idx+1}",
+            "profit_pct": round(pct, 2),
+            "profit_money": round(money, 2),
+        })
+
+    avg_pct = round(sum(p["profit_pct"] for p in points) / len(points), 2) if points else 0.0
+    avg_money = round(sum(p["profit_money"] for p in points), 2) if points else 0.0
+
+    return {
+        "profit_money": avg_money,
+        "profit_pct": avg_pct,
+        "wins": gains,
+        "losses": losses,
+        "chart": points,
+    }
+
+
+def _build_combined_summary(crypto_summary: dict, stock_summary: dict) -> dict:
+    crypto_chart = list(crypto_summary.get("chart") or [])
+    stock_chart = list(stock_summary.get("chart") or [])
+    n = max(len(crypto_chart), len(stock_chart))
+
+    chart = []
+    for i in range(n):
+        c = crypto_chart[i] if i < len(crypto_chart) else {}
+        s = stock_chart[i] if i < len(stock_chart) else {}
+        chart.append({
+            "x": i + 1,
+            "crypto_profit_money": _safe_num(c.get("profit_money")),
+            "crypto_profit_pct": _safe_num(c.get("profit_pct")),
+            "stock_profit_money": _safe_num(s.get("profit_money")),
+            "stock_profit_pct": _safe_num(s.get("profit_pct")),
+            "combined_profit_money": _safe_num(c.get("profit_money")) + _safe_num(s.get("profit_money")),
+            "combined_profit_pct": _safe_num(c.get("profit_pct")) + _safe_num(s.get("profit_pct")),
+        })
+
+    return {"chart": chart}
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -90,6 +235,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _public_url(path: str) -> str:
+    base = (settings.APP_PUBLIC_URL or "").rstrip("/")
+    return f"{base}{path}"
+
+
+def _user_terms_ok(user: User) -> bool:
+    return (user.accepted_terms_version or "") == settings.TERMS_VERSION
+
+
+def _create_one_time_token() -> str:
+    return secrets.token_urlsafe(32)
 
 
 def _safe_autostart_microcap() -> None:
@@ -132,16 +290,31 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="Email già registrata")
 
+    verify_token = _create_one_time_token()
+
     user = User(
         email=payload.email.lower(),
         password_hash=get_password_hash(payload.password),
         full_name=payload.full_name,
         is_active=True,
+        email_verified=False,
+        email_verify_token=verify_token,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
     ensure_trial(user, db)
+
+    verify_link = _public_url(f"/verify-email?token={verify_token}")
+    send_email(
+        user.email,
+        "Verifica il tuo account BTTcapital",
+        f"""
+        <h2>Benvenuto in BTTcapital</h2>
+        <p>Per attivare il tuo account, verifica la tua email:</p>
+        <p><a href="{verify_link}">{verify_link}</a></p>
+        """,
+    )
 
     token = create_access_token(user.email, extra={"is_admin": user.is_admin})
     return {"access_token": token, "token_type": "bearer"}
@@ -169,7 +342,77 @@ def me(user: User = Depends(get_current_user)):
         "trial_started_at": user.trial_started_at,
         "trial_expires_at": user.trial_expires_at,
         "has_access": has_access(user),
+        "email_verified": bool(user.email_verified),
+        "accepted_terms_version": user.accepted_terms_version or "",
+        "terms_ok": _user_terms_ok(user),
     }
+
+
+@app.get("/api/auth/verify-email")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    user = db.scalar(select(User).where(User.email_verify_token == token))
+    if not user:
+        raise HTTPException(status_code=400, detail="Token verifica non valido")
+
+    user.email_verified = True
+    user.email_verify_token = ""
+    db.commit()
+    return {"message": "Email verificata con successo"}
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(payload: ForgotPasswordIn, db: Session = Depends(get_db)):
+    user = db.scalar(select(User).where(User.email == payload.email.lower()))
+    if not user:
+        return {"message": "Se l'email esiste, riceverai un link di reset"}
+
+    token = _create_one_time_token()
+    user.reset_password_token = token
+    user.reset_password_expires_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    db.commit()
+
+    reset_link = _public_url(f"/reset-password?token={token}")
+    send_email(
+        user.email,
+        "Reset password BTTcapital",
+        f"""
+        <h2>Reset password</h2>
+        <p>Per impostare una nuova password:</p>
+        <p><a href="{reset_link}">{reset_link}</a></p>
+        """,
+    )
+
+    return {"message": "Se l'email esiste, riceverai un link di reset"}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(payload: ResetPasswordIn, db: Session = Depends(get_db)):
+    user = db.scalar(select(User).where(User.reset_password_token == payload.token))
+    if not user:
+        raise HTTPException(status_code=400, detail="Token reset non valido")
+
+    expires = user.reset_password_expires_at
+    if not expires or expires <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Token reset scaduto")
+
+    user.password_hash = get_password_hash(payload.password)
+    user.reset_password_token = ""
+    user.reset_password_expires_at = None
+    db.commit()
+
+    return {"message": "Password aggiornata con successo"}
+
+
+@app.post("/api/user/accept-terms")
+def accept_terms(payload: AcceptTermsIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not payload.accepted:
+        raise HTTPException(status_code=400, detail="Accettazione termini obbligatoria")
+
+    user.accepted_terms_version = settings.TERMS_VERSION
+    user.accepted_terms_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return {"ok": True, "terms_version": settings.TERMS_VERSION}
 
 
 @app.get("/api/public/site")
@@ -188,9 +431,11 @@ def public_site(db: Session = Depends(get_db)):
 def public_microcap(db: Session = Depends(get_db)):
     external_state, external_dashboard = _load_external_microcap(db)
     if external_state is not None:
+        dashboard = external_dashboard or {}
         return {
             "process": external_state,
-            "dashboard": external_dashboard or {},
+            "dashboard": dashboard,
+            "summary": _build_crypto_summary(dashboard),
             "public_mode": external_state.get("mode") or settings.MICROCAP_PUBLIC_MODE,
             "live_available": settings.MICROCAP_LIVE_ENABLED,
         }
@@ -199,9 +444,11 @@ def public_microcap(db: Session = Depends(get_db)):
     if settings.MICROCAP_AUTO_START and not status.get("running"):
         status = microcap_manager.start(mode=settings.MICROCAP_PUBLIC_MODE)
 
+    dashboard = read_dashboard()
     return {
         "process": status,
-        "dashboard": read_dashboard(),
+        "dashboard": dashboard,
+        "summary": _build_crypto_summary(dashboard),
         "public_mode": settings.MICROCAP_PUBLIC_MODE,
         "live_available": settings.MICROCAP_LIVE_ENABLED,
     }
@@ -224,28 +471,61 @@ def external_microcap_heartbeat(payload: ExternalMicrocapHeartbeatIn, db: Sessio
 
     return {"ok": True}
 
+@app.get("/api/public/combined/summary")
+def public_combined_summary(db: Session = Depends(get_db)):
+    external_state, external_dashboard = _load_external_microcap(db)
+    crypto_dashboard = external_dashboard if external_state is not None else read_dashboard()
+    crypto_summary = _build_crypto_summary(crypto_dashboard)
+
+    job = db.scalar(select(BttJob).order_by(desc(BttJob.created_at)))
+    latest = None
+    if job:
+        try:
+            latest = {
+                "id": job.id,
+                "status": job.status,
+                "created_at": job.created_at,
+                "summary": json.loads(job.summary_json or "{}"),
+                "stdout_log": _tail(job.stdout_log, 6000),
+                "error_log": _tail(job.error_log, 4000),
+            }
+        except Exception:
+            latest = None
+
+    stock_summary = _build_stock_summary(latest)
+    combined = _build_combined_summary(crypto_summary, stock_summary)
+
+    return {
+        "crypto": crypto_summary,
+        "stock": stock_summary,
+        "combined": combined,
+    }
+
 
 @app.get("/api/public/btt/latest")
 def public_btt_latest(db: Session = Depends(get_db)):
     job = db.scalar(select(BttJob).order_by(desc(BttJob.created_at)))
     if not job:
-        return {"has_job": False, "latest": None}
+        return {"has_job": False, "latest": None, "summary_metrics": _build_stock_summary(None)}
 
     try:
         summary = json.loads(job.summary_json or "{}")
     except Exception:
         summary = {}
 
+    latest = {
+        "id": job.id,
+        "status": job.status,
+        "created_at": job.created_at,
+        "summary": summary,
+        "stdout_log": _tail(job.stdout_log, 6000),
+        "error_log": _tail(job.error_log, 4000),
+    }
+
     return {
         "has_job": True,
-        "latest": {
-            "id": job.id,
-            "status": job.status,
-            "created_at": job.created_at,
-            "summary": summary,
-            "stdout_log": _tail(job.stdout_log, 6000),
-            "error_log": _tail(job.error_log, 4000),        
-        },
+        "latest": latest,
+        "summary_metrics": _build_stock_summary(latest),
     }
 
 
@@ -273,13 +553,19 @@ def user_btt_run(user: User = Depends(get_current_user), db: Session = Depends(g
         raise HTTPException(status_code=429, detail="Limite giornaliero run raggiunto")
 
     try:
-        job = create_btt_job(db, user.id, SessionLocal, fast_demo=True)
+        job = create_btt_job(db, user.id, SessionLocal, fast_demo=False)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"BTT run bootstrap failed: {type(exc).__name__}: {exc}")
     return {"job_id": job.id, "status": job.status}
 
 @app.post("/api/billing/checkout")
 def billing_checkout(payload: StripeCheckoutIn, user: User = Depends(get_current_user)):
+    if not user.email_verified:
+        raise HTTPException(status_code=400, detail="Verifica prima la tua email")
+
+    if not _user_terms_ok(user):
+        raise HTTPException(status_code=400, detail="Devi accettare Termini e Policy prima del checkout")
+
     session = create_checkout_session(user, payload.plan)
     return {"url": session.url}
 

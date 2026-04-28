@@ -1,55 +1,73 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { EquityChart, ScoreChart } from '@/components/Charts'
+import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '@/lib/api'
+import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 export default function DashboardPage() {
-  const [microcap, setMicrocap] = useState<any>(null)
-  const [btt, setBtt] = useState<any>(null)
-  const [error, setError] = useState('')
+  const [crypto, setCrypto] = useState<any>(null)
+  const [stock, setStock] = useState<any>(null)
 
   useEffect(() => {
-    apiFetch('/api/public/microcap').then(setMicrocap).catch((e) => setError(e.message))
-    apiFetch('/api/public/btt/latest').then(setBtt).catch(() => null)
+    apiFetch('/api/public/microcap').then(setCrypto).catch(() => null)
+    apiFetch('/api/public/btt/latest').then(setStock).catch(() => null)
+    apiFetch('/api/public/combined/summary').then(setCombined)
   }, [])
 
-  const overview = microcap?.dashboard?.overview
-  const latest = btt?.latest
+  const cryptoSeries = crypto?.dashboard?.equity_curve || []
+  const stockRows = stock?.latest?.summary?.top_rows || []
+
+  const stockSeries = stockRows.slice(0, 12).map((row: any, idx: number) => ({
+    ts: idx + 1,
+    stock: idx + 1,
+  }))
+
+  const combined = useMemo(() => {
+    const maxLen = Math.max(cryptoSeries.length, stockSeries.length)
+    return Array.from({ length: maxLen }).map((_, idx) => ({
+      label: `${idx + 1}`,
+      crypto: cryptoSeries[idx]?.equity ?? null,
+      stock: stockSeries[idx]?.stock ?? null,
+    }))
+  }, [cryptoSeries, stockSeries])
 
   return (
     <div className="shell section stack">
       <div>
-        <h1 className="section-title">Dashboard unificata</h1>
-        <p className="section-sub">Vista unica per demo paper Microcap e ultimi report BTT Capital.</p>
+        <h1 className="section-title">Dashboard BTTcapital</h1>
+        <p className="section-sub">Vista aggregata di BTTcrypto e BTTstock.</p>
       </div>
-      {error ? <div className="bad">{error}</div> : null}
-      <div className="kpi-grid">
-        <div className="kpi"><span className="muted">Cash</span><strong>${overview?.cash?.toFixed?.(2) || '0.00'}</strong></div>
-        <div className="kpi"><span className="muted">Peak equity</span><strong>${overview?.peak_equity?.toFixed?.(2) || '0.00'}</strong></div>
-        <div className="kpi"><span className="muted">Watchlist</span><strong>{overview?.watchlist_count ?? 0}</strong></div>
-        <div className="kpi"><span className="muted">BTT latest</span><strong>{latest?.status || 'none'}</strong></div>
-      </div>
-      <div className="grid-2">
-        <div className="card">
-          <div className="row"><h2 className="section-title">Microcap equity view</h2><span className="pill">{microcap?.public_mode || 'paper'}</span></div>
-          <EquityChart data={microcap?.dashboard?.equity_curve || []} />
-        </div>
-        <div className="card">
-          <div className="row"><h2 className="section-title">Top signals</h2><span className="pill">watchlist</span></div>
-          <ScoreChart data={microcap?.dashboard?.top_candidates || []} />
-        </div>
-      </div>
-      <div className="grid-2">
-        <div className="card">
-          <h2 className="section-title">Entry last</h2>
-          <pre className="log">{JSON.stringify(overview?.entry_last || {}, null, 2)}</pre>
-        </div>
-        <div className="card">
-          <h2 className="section-title">Ultimo report BTT</h2>
-          <pre className="log">{JSON.stringify(latest?.summary || {}, null, 2)}</pre>
+
+      <div className="card">
+        <h2 className="section-title">Grafico aggregato settori</h2>
+        <div style={{ width: '100%', height: 320 }}>
+          <ResponsiveContainer>
+            <LineChart data={combined}>
+              <XAxis dataKey="label" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="crypto" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="stock" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>
+
+<div className="card">
+  <h2 className="section-title">Confronto BTTcrypto + BTTstock</h2>
+  <div style={{ width: '100%', height: 340 }}>
+    <ResponsiveContainer>
+      <LineChart data={combined?.combined?.chart || []}>
+        <XAxis dataKey="x" />
+        <YAxis />
+        <Tooltip />
+        <Line type="monotone" dataKey="crypto_profit_money" strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="stock_profit_money" strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="combined_profit_money" strokeWidth={2} dot={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  </div>
+</div>
   )
 }

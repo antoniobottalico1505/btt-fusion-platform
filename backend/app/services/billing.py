@@ -16,11 +16,21 @@ def stripe_ready() -> bool:
 
 def price_for_plan(plan: str) -> str:
     p = (plan or '').strip().lower()
-    if p == 'monthly':
-        return settings.STRIPE_PRICE_MONTHLY
-    if p == 'yearly':
-        return settings.STRIPE_PRICE_YEARLY
-    raise ValueError('Invalid plan')
+
+    mapping = {
+        'crypto_monthly': settings.STRIPE_PRICE_CRYPTO_MONTHLY,
+        'crypto_yearly': settings.STRIPE_PRICE_CRYPTO_YEARLY,
+        'stock_monthly': settings.STRIPE_PRICE_STOCK_MONTHLY,
+        'stock_yearly': settings.STRIPE_PRICE_STOCK_YEARLY,
+        'bundle_monthly': settings.STRIPE_PRICE_BUNDLE_MONTHLY,
+        'bundle_yearly': settings.STRIPE_PRICE_BUNDLE_YEARLY,
+    }
+
+    value = mapping.get(p)
+    if not value:
+        raise ValueError('Invalid plan')
+
+    return value
 
 
 def create_checkout_session(user: User, plan: str):
