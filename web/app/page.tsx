@@ -11,11 +11,12 @@ export default function HomePage() {
 
   useEffect(() => {
     apiFetch('/api/public/site').then(setSite).catch(() => null)
-    apiFetch('/api/public/bttcrypto').then(setCrypto).catch(() => null)
-    apiFetch('/api/public/bttstock/latest').then(setStock).catch(() => null)
+    apiFetch('/api/public/microcap').then(setCrypto).catch(() => null)
+    apiFetch('/api/public/btt/latest').then(setStock).catch(() => null)
   }, [])
 
-  const overview = crypto?.dashboard?.overview
+  const overview = crypto?.dashboard?.overview || {}
+  const cryptoSummary = crypto?.dashboard?.summary || crypto?.summary || {}
 
   return (
     <div className="shell">
@@ -24,7 +25,8 @@ export default function HomePage() {
           <span className="eyebrow">Premium market intelligence platform</span>
           <h1 className="h1">{site?.copy?.hero_title || 'BTTcapital'}</h1>
           <p className="lead">
-            {site?.copy?.hero_subtitle || 'BTTcapital unisce BTTcrypto e BTTstock in un’unica esperienza premium per analisi, osservazione e operatività assistita.'}
+            {site?.copy?.hero_subtitle ||
+              'BTTcapital unisce BTTcrypto e BTTstock in un’unica esperienza premium per analisi, osservazione e operatività assistita.'}
           </p>
           <div className="actions">
             <Link href="/dashboard"><button>Apri dashboard</button></Link>
@@ -33,10 +35,28 @@ export default function HomePage() {
         </div>
 
         <div className="hero-stats">
-          <div className="metric"><div className="metric-label">BTTcrypto mode</div><div className="metric-value">{crypto?.public_mode || 'paper'}</div></div>
-          <div className="metric"><div className="metric-label">Cash stimata</div><div className="metric-value">${overview?.cash?.toFixed?.(2) || '0.00'}</div></div>
-          <div className="metric"><div className="metric-label">Watchlist attuale</div><div className="metric-value">{overview?.watchlist_count ?? 0}</div></div>
-          <div className="metric"><div className="metric-label">Ultimo report BTTstock</div><div className="metric-value">{stock?.has_job ? stock.latest.status : 'Nessuno'}</div></div>
+          <div className="metric">
+            <div className="metric-label">BTTcrypto mode</div>
+            <div className="metric-value">{crypto?.public_mode || 'paper'}</div>
+          </div>
+
+          <div className="metric">
+            <div className="metric-label">Cash stimata</div>
+            <div className="metric-value">${Number(overview?.cash || 0).toFixed(2)}</div>
+          </div>
+
+          <div className="metric">
+            <div className="metric-label">Profitto totale crypto</div>
+            <div className="metric-value">
+              {Number(cryptoSummary?.profit_money || 0) >= 0 ? '+' : '-'}$
+              {Math.abs(Number(cryptoSummary?.profit_money || 0)).toFixed(2)}
+            </div>
+          </div>
+
+          <div className="metric">
+            <div className="metric-label">Ultimo report BTTstock</div>
+            <div className="metric-value">{stock?.has_job ? stock.latest.status : 'Nessuno'}</div>
+          </div>
         </div>
       </section>
 
@@ -47,7 +67,7 @@ export default function HomePage() {
           <div className="stack muted">
             <span>Monitoraggio crypto</span>
             <span>Dashboard operativa</span>
-            <span>Dati lato server / heartbeat esterno</span>
+            <span>Dati reali lato server / heartbeat</span>
           </div>
         </div>
 
@@ -62,12 +82,12 @@ export default function HomePage() {
         </div>
 
         <div className="card">
-          <h3 className="section-title">Abbonamenti</h3>
-          <p className="section-sub">Crypto, Stock o Bundle, mensile o annuale.</p>
+          <h3 className="section-title">Abbonamento unico</h3>
+          <p className="section-sub">Un solo piano per l’accesso completo a tutto BTTcapital.</p>
           <div className="stack muted">
-            <span>BTTcrypto</span>
-            <span>BTTstock</span>
-            <span>BTTcapital bundle</span>
+            <span>Mensile: €99</span>
+            <span>Annuale: €990</span>
+            <span>Accesso completo a BTTcrypto e BTTstock</span>
           </div>
         </div>
       </section>

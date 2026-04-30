@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    APP_NAME: str = "BTT Fusion Platform"
+    APP_NAME: str = "BTTcapital"
     APP_ENV: str = "development"
     SECRET_KEY: str = "change-me"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
@@ -28,19 +28,19 @@ class Settings(BaseSettings):
     STORAGE_ROOT: str = "./storage"
     CORS_ALLOW_ORIGINS: str = "http://localhost:3000"
     CORS_ALLOW_ORIGIN_REGEX: str = r"^https://([a-z0-9-]+\.)*vercel\.app$"
+
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_PRICE_CRYPTO_MONTHLY: str = ""
-    STRIPE_PRICE_CRYPTO_YEARLY: str = ""
-    STRIPE_PRICE_STOCK_MONTHLY: str = ""
-    STRIPE_PRICE_STOCK_YEARLY: str = ""
-    STRIPE_PRICE_BUNDLE_MONTHLY: str = ""
-    STRIPE_PRICE_BUNDLE_YEARLY: str = ""   
+    STRIPE_PRICE_MONTHLY: str = ""
+    STRIPE_PRICE_YEARLY: str = ""
+
     STRIPE_SUCCESS_URL: str = "http://localhost:3000/dashboard?checkout=success"
     STRIPE_CANCEL_URL: str = "http://localhost:3000/pricing?checkout=cancel"
+
     EXTERNAL_MICROCAP_API_KEY: str = ""
     EXTERNAL_MICROCAP_TTL_SEC: int = 90
     TERMS_VERSION: str = "2026-04"
+
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

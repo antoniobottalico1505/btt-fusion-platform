@@ -18,10 +18,14 @@ export default function PricingPage() {
     setError('')
     setMsg('')
     try {
-      await apiFetch('/api/user/accept-terms', {
-        method: 'POST',
-        body: JSON.stringify({ accepted: true }),
-      }, true)
+      await apiFetch(
+        '/api/user/accept-terms',
+        {
+          method: 'POST',
+          body: JSON.stringify({ accepted: true }),
+        },
+        true
+      )
       setAccepted(true)
       setMsg('Termini accettati')
     } catch (e: any) {
@@ -29,7 +33,7 @@ export default function PricingPage() {
     }
   }
 
-  async function checkout(plan: string) {
+  async function checkout(plan: 'monthly' | 'yearly') {
     setError('')
     try {
       const res = await apiFetch<{ url: string }>(
@@ -46,8 +50,10 @@ export default function PricingPage() {
   return (
     <div className="shell section stack">
       <div>
-        <h1 className="section-title">Abbonamenti BTTcapital</h1>
-        <p className="section-sub">Scegli BTTcrypto, BTTstock oppure il bundle completo.</p>
+        <h1 className="section-title">Abbonamento BTTcapital</h1>
+        <p className="section-sub">
+          Un solo accesso completo a BTTcrypto e BTTstock, in mensile o annuale.
+        </p>
       </div>
 
       {msg ? <div className="good">{msg}</div> : null}
@@ -55,32 +61,34 @@ export default function PricingPage() {
 
       <div className="card stack">
         <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
-          <span>Confermo di aver letto e accettato <Link href="/terms">Termini</Link> e <Link href="/policy">Policy</Link>.</span>
+          <input
+            type="checkbox"
+            checked={accepted}
+            onChange={(e) => setAccepted(e.target.checked)}
+          />
+          <span>
+            Confermo di aver letto e accettato <Link href="/terms">Termini</Link> e{' '}
+            <Link href="/policy">Policy</Link>.
+          </span>
         </label>
         <button onClick={acceptTerms}>Salva accettazione termini</button>
       </div>
 
-      <div className="grid-3">
+      <div className="grid-2">
         <div className="card stack">
-          <h2 className="section-title">BTTcrypto</h2>
-          <p>Mensile o annuale per il modulo crypto.</p>
-          <button onClick={() => checkout('crypto_monthly')}>Checkout crypto mensile</button>
-          <button className="secondary" onClick={() => checkout('crypto_yearly')}>Checkout crypto annuale</button>
-        </div>
-
-        <div className="card stack">
-          <h2 className="section-title">BTTstock</h2>
-          <p>Mensile o annuale per il modulo stock.</p>
-          <button onClick={() => checkout('stock_monthly')}>Checkout stock mensile</button>
-          <button className="secondary" onClick={() => checkout('stock_yearly')}>Checkout stock annuale</button>
-        </div>
-
-        <div className="card stack">
-          <h2 className="section-title">BTTcapital Bundle</h2>
+          <h2 className="section-title">BTTcapital Mensile</h2>
           <p>Accesso completo a BTTcrypto e BTTstock.</p>
-          <button onClick={() => checkout('bundle_monthly')}>Checkout bundle mensile</button>
-          <button className="secondary" onClick={() => checkout('bundle_yearly')}>Checkout bundle annuale</button>
+          <p className="lead">€99 / mese</p>
+          <button onClick={() => checkout('monthly')}>Checkout mensile</button>
+        </div>
+
+        <div className="card stack">
+          <h2 className="section-title">BTTcapital Annuale</h2>
+          <p>Accesso completo a BTTcrypto e BTTstock con risparmio annuale.</p>
+          <p className="lead">€990 / anno</p>
+          <button className="secondary" onClick={() => checkout('yearly')}>
+            Checkout annuale
+          </button>
         </div>
       </div>
     </div>

@@ -43,11 +43,14 @@ function parsePctFromRow(row: Record<string, unknown>): number | null {
     return (
       kk.includes('return') ||
       kk.includes('perf') ||
+      kk.includes('performance') ||
       kk.includes('upside') ||
       kk.includes('gain') ||
       kk.includes('profit') ||
       kk.includes('yield') ||
-      kk.includes('cagr')
+      kk.includes('cagr') ||
+      kk.includes('change') ||
+      kk.includes('expected')
     )
   })
 
@@ -115,12 +118,14 @@ export default function BTTstockPage() {
   const latest = data?.latest
   const topRows = latest?.summary?.top_rows || []
   const portfolioRows = latest?.summary?.portfolio_rows || []
-  const sourceRows = portfolioRows.length ? portfolioRows : topRows
+
+  // Per le performance usiamo PRIMA topRows.
+  const performanceRows = topRows.length ? topRows : portfolioRows
 
   const stockMetrics = useMemo(() => {
     const NOTIONAL_PER_ASSET = 1000
 
-    const chart: StockChartPoint[] = sourceRows.slice(0, 20).map((row: any, idx: number) => {
+    const chart: StockChartPoint[] = performanceRows.slice(0, 20).map((row: any, idx: number) => {
       const pct = parsePctFromRow(row as Record<string, unknown>) ?? 0
       const money = (pct / 100) * NOTIONAL_PER_ASSET
 
@@ -132,7 +137,11 @@ export default function BTTstockPage() {
       }
     })
 
-    const totalMoney = chart.reduce((acc: number, row: StockChartPoint) => acc + row.profit_money, 0)
+    const totalMoney = chart.reduce(
+      (acc: number, row: StockChartPoint) => acc + row.profit_money,
+      0
+    )
+
     const avgPct = chart.length
       ? chart.reduce((acc: number, row: StockChartPoint) => acc + row.profit_pct, 0) / chart.length
       : 0
@@ -150,7 +159,7 @@ export default function BTTstockPage() {
       lastPct: Number(last.profit_pct.toFixed(2)),
       chart,
     }
-  }, [sourceRows])
+  }, [performanceRows])
 
   return (
     <div className="shell section stack">
@@ -231,7 +240,7 @@ export default function BTTstockPage() {
 
       <div className="grid-2">
         <div className="card">
-          <h2 className="section-title">Titoli con potenziale positivo</h2>
+          <h2 className="section-title">Titoli migliori</h2>
           <div className="table-wrap">
             <table>
               <thead>
