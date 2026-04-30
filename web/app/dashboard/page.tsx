@@ -11,12 +11,35 @@ import {
   YAxis,
 } from 'recharts'
 
-function n(v: any): number {
+type CryptoPoint = {
+  x: number
+  profit_money: number
+  profit_pct: number
+}
+
+type StockPoint = {
+  x: number
+  label: string
+  profit_money: number
+  profit_pct: number
+}
+
+type CombinedPoint = {
+  x: number
+  crypto_profit_money: number
+  crypto_profit_pct: number
+  stock_profit_money: number
+  stock_profit_pct: number
+  combined_profit_money: number
+  combined_profit_pct: number
+}
+
+function n(v: unknown): number {
   const x = Number(v)
   return Number.isFinite(x) ? x : 0
 }
 
-function parseNumber(raw: any): number | null {
+function parseNumber(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
 
@@ -33,7 +56,7 @@ function parseNumber(raw: any): number | null {
   return Number.isFinite(num) ? num : null
 }
 
-function parsePctFromRow(row: Record<string, any>): number | null {
+function parsePctFromRow(row: Record<string, unknown>): number | null {
   const entries = Object.entries(row || {})
 
   const preferred = entries.find(([k]) => {
@@ -81,7 +104,7 @@ export default function DashboardPage() {
   useEffect(() => {
     apiFetch('/api/public/microcap')
       .then(setCrypto)
-      .catch((e) => setError(e.message || 'Errore caricamento BTTcrypto'))
+      .catch((e: any) => setError(e.message || 'Errore caricamento BTTcrypto'))
 
     apiFetch('/api/public/btt/latest')
       .then(setStock)
@@ -89,7 +112,8 @@ export default function DashboardPage() {
   }, [])
 
   const cryptoCurve = crypto?.dashboard?.equity_curve || []
-  const cryptoPerformanceChart = useMemo(() => {
+
+  const cryptoPerformanceChart = useMemo<CryptoPoint[]>(() => {
     if (!cryptoCurve.length) return []
     const first = n(cryptoCurve[0]?.equity)
 
@@ -97,6 +121,7 @@ export default function DashboardPage() {
       const eq = n(row?.equity)
       const profitMoney = eq - first
       const profitPct = first > 0 ? (profitMoney / first) * 100 : 0
+
       return {
         x: idx + 1,
         profit_money: Number(profitMoney.toFixed(2)),
@@ -113,20 +138,22 @@ export default function DashboardPage() {
     ? n(cryptoPerformanceChart[cryptoPerformanceChart.length - 1]?.profit_pct)
     : 0
 
-  const stockRows = stock?.latest?.summary?.portfolio_rows?.length
-    ? stock?.latest?.summary?.portfolio_rows
-    : stock?.latest?.summary?.top_rows || []
+  const stockRows: Record<string, unknown>[] =
+    stock?.latest?.summary?.portfolio_rows?.length
+      ? stock?.latest?.summary?.portfolio_rows
+      : stock?.latest?.summary?.top_rows || []
 
-  const stockPerformanceChart = useMemo(() => {
+  const stockPerformanceChart = useMemo<StockPoint[]>(() => {
     const NOTIONAL_PER_ASSET = 1000
 
-    return stockRows.slice(0, 20).map((row: any, idx: number) => {
+    return stockRows.slice(0, 20).map((row: Record<string, unknown>, idx: number) => {
       const pct = parsePctFromRow(row) ?? 0
       const money = (pct / 100) * NOTIONAL_PER_ASSET
 
       return {
         x: idx + 1,
-        label: row?.ticker || row?.symbol || row?.name || `Asset ${idx + 1}`,
+        label:
+          String(row?.ticker || row?.symbol || row?.name || `Asset ${idx + 1}`),
         profit_money: Number(money.toFixed(2)),
         profit_pct: Number(pct.toFixed(2)),
       }
@@ -134,17 +161,23 @@ export default function DashboardPage() {
   }, [stockRows])
 
   const stockAvgMoney = stockPerformanceChart.length
-    ? stockPerformanceChart.reduce((acc, row) => acc + n(row.profit_money), 0)
+    ? stockPerformanceChart.reduce(
+        (acc: number, row: StockPoint) => acc + n(row.profit_money),
+        0
+      )
     : 0
 
   const stockAvgPct = stockPerformanceChart.length
-    ? stockPerformanceChart.reduce((acc, row) => acc + n(row.profit_pct), 0) / stockPerformanceChart.length
+    ? stockPerformanceChart.reduce(
+        (acc: number, row: StockPoint) => acc + n(row.profit_pct),
+        0
+      ) / stockPerformanceChart.length
     : 0
 
-  const combinedChart = useMemo(() => {
+  const combinedChart = useMemo<CombinedPoint[]>(() => {
     const maxLen = Math.max(cryptoPerformanceChart.length, stockPerformanceChart.length)
 
-    return Array.from({ length: maxLen }).map((_, idx) => {
+    return Array.from({ length: maxLen }).map((_, idx: number) => {
       const cryptoPoint = cryptoPerformanceChart[idx]
       const stockPoint = stockPerformanceChart[idx]
 
@@ -168,16 +201,22 @@ export default function DashboardPage() {
     })
   }, [cryptoPerformanceChart, stockPerformanceChart])
 
-  const combinedNow = combinedChart.length
-    ? combinedChart[combinedChart.length - 1]
-    : {
-        combined_profit_money: 0,
-        combined_profit_pct: 0,
-        crypto_profit_money: 0,
-        stock_profit_money: 0,
-      }
+  const combinedNow: CombinedPoint =
+    combinedChart.length > 0
+      ? combinedChart[combinedChart.length - 1]
+      : {
+          x: 0,
+          crypto_profit_money: 0,
+          crypto_profit_pct: 0,
+          stock_profit_money: 0,
+          stock_profit_pct: 0,
+          combined_profit_money: 0,
+          combined_profit_pct: 0,
+        }
 
-  const spreadMoney = n(combinedNow.crypto_profit_money) - n(combinedNow.stock_profit_money)
+  const spreadMoney =
+    n(combinedNow.crypto_profit_money) - n(combinedNow.stock_profit_money)
+
   const sectorLeader =
     n(combinedNow.crypto_profit_money) > n(combinedNow.stock_profit_money)
       ? 'BTTcrypto'
@@ -185,7 +224,10 @@ export default function DashboardPage() {
         ? 'BTTstock'
         : 'Parità'
 
-  const positiveCombinedPoints = combinedChart.filter((p) => n(p.combined_profit_money) > 0).length
+  const positiveCombinedPoints = combinedChart.filter(
+    (p: CombinedPoint) => n(p.combined_profit_money) > 0
+  ).length
+
   const consistencyPct = combinedChart.length
     ? (positiveCombinedPoints / combinedChart.length) * 100
     : 0
