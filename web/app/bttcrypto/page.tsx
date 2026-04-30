@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import {
   ResponsiveContainer,
@@ -11,19 +11,23 @@ import {
   Tooltip,
 } from 'recharts'
 
-function n(v: any): number {
+function n(v: unknown): number {
   const x = Number(v)
   return Number.isFinite(x) ? x : 0
 }
 
-function moneySigned(v: number): string {
-  const sign = v >= 0 ? '+' : '-'
-  return `${sign}$${Math.abs(v).toFixed(2)}`
+function moneySignedNullable(v: unknown): string {
+  const num = Number(v)
+  if (!Number.isFinite(num)) return '—'
+  const sign = num >= 0 ? '+' : '-'
+  return `${sign}$${Math.abs(num).toFixed(2)}`
 }
 
-function pctSigned(v: number): string {
-  const sign = v >= 0 ? '+' : '-'
-  return `${sign}${Math.abs(v).toFixed(2)}%`
+function pctSignedNullable(v: unknown): string {
+  const num = Number(v)
+  if (!Number.isFinite(num)) return '—'
+  const sign = num >= 0 ? '+' : '-'
+  return `${sign}${Math.abs(num).toFixed(2)}%`
 }
 
 export default function BTTcryptoPage() {
@@ -51,79 +55,8 @@ export default function BTTcryptoPage() {
   const trades = dashboard?.trades || []
   const positions = dashboard?.positions || []
   const watchlist = dashboard?.top_candidates || []
-  const equityCurve = dashboard?.equity_curve || []
-
-  const performanceChart = useMemo(() => {
-    if (!equityCurve.length) return []
-
-    const firstEquity = n(equityCurve[0]?.equity)
-
-    return equityCurve.map((row: any, idx: number) => {
-      const eq = n(row?.equity)
-      const profitMoney = eq - firstEquity
-      const profitPct = firstEquity > 0 ? (profitMoney / firstEquity) * 100 : 0
-
-      return {
-        x: idx + 1,
-        equity: eq,
-        profit_money: Number(profitMoney.toFixed(2)),
-        profit_pct: Number(profitPct.toFixed(2)),
-      }
-    })
-  }, [equityCurve])
-
-  const totalProfitMoney = useMemo(() => {
-    if (!performanceChart.length) return 0
-    return n(performanceChart[performanceChart.length - 1]?.profit_money)
-  }, [performanceChart])
-
-  const totalProfitPct = useMemo(() => {
-    if (!performanceChart.length) return 0
-    return n(performanceChart[performanceChart.length - 1]?.profit_pct)
-  }, [performanceChart])
-
-  const lastProfitMoney = useMemo(() => {
-    if (equityCurve.length >= 2) {
-      const lastEq = n(equityCurve[equityCurve.length - 1]?.equity)
-      const prevEq = n(equityCurve[equityCurve.length - 2]?.equity)
-      return Number((lastEq - prevEq).toFixed(2))
-    }
-    if (performanceChart.length === 1) {
-      return n(performanceChart[0]?.profit_money)
-    }
-    return 0
-  }, [equityCurve, performanceChart])
-
-  const lastProfitPct = useMemo(() => {
-    if (equityCurve.length >= 2) {
-      const lastEq = n(equityCurve[equityCurve.length - 1]?.equity)
-      const prevEq = n(equityCurve[equityCurve.length - 2]?.equity)
-      return prevEq > 0 ? Number((((lastEq - prevEq) / prevEq) * 100).toFixed(2)) : 0
-    }
-    if (performanceChart.length === 1) {
-      return n(performanceChart[0]?.profit_pct)
-    }
-    return 0
-  }, [equityCurve, performanceChart])
-
-  const tradeStats = useMemo(() => {
-    if (equityCurve.length < 2) {
-      return { wins: 0, losses: 0 }
-    }
-
-    let wins = 0
-    let losses = 0
-
-    for (let i = 1; i < equityCurve.length; i++) {
-      const curr = n(equityCurve[i]?.equity)
-      const prev = n(equityCurve[i - 1]?.equity)
-      const diff = curr - prev
-      if (diff > 0) wins += 1
-      if (diff < 0) losses += 1
-    }
-
-    return { wins, losses }
-  }, [equityCurve])
+  const summary = dashboard?.summary || data?.summary || {}
+  const performanceChart = summary?.chart || dashboard?.equity_curve || []
 
   return (
     <div className="shell section stack">
@@ -131,7 +64,7 @@ export default function BTTcryptoPage() {
         <div>
           <h1 className="section-title">BTTcrypto</h1>
           <p className="section-sub">
-            Quadro operativo crypto con andamento, risultato totale e impatto dell’ultima operazione.
+            Quadro operativo crypto coerente con i valori reali inviati dal bot.
           </p>
         </div>
         <span className="pill">{data?.process?.running ? 'Attivo' : 'Non attivo'}</span>
@@ -145,16 +78,16 @@ export default function BTTcryptoPage() {
           <strong>${n(overview?.cash).toFixed(2)}</strong>
         </div>
         <div className="kpi">
-          <span className="muted">Posizioni aperte</span>
-          <strong>{positions.length}</strong>
+          <span className="muted">Capitale iniziale</span>
+          <strong>${n(summary?.start_equity || overview?.start_equity).toFixed(2)}</strong>
         </div>
         <div className="kpi">
           <span className="muted">Operazioni positive</span>
-          <strong>{tradeStats.wins}</strong>
+          <strong>{summary?.wins ?? 0}</strong>
         </div>
         <div className="kpi">
           <span className="muted">Operazioni negative</span>
-          <strong>{tradeStats.losses}</strong>
+          <strong>{summary?.losses ?? 0}</strong>
         </div>
       </div>
 
@@ -164,22 +97,22 @@ export default function BTTcryptoPage() {
         <div className="kpi-grid">
           <div className="kpi">
             <span className="muted">Profitto / Perdita totale</span>
-            <strong>{moneySigned(totalProfitMoney)}</strong>
+            <strong>{moneySignedNullable(summary?.profit_money)}</strong>
           </div>
 
           <div className="kpi">
             <span className="muted">Profitto / Perdita ultima operazione</span>
-            <strong>{moneySigned(lastProfitMoney)}</strong>
+            <strong>{moneySignedNullable(summary?.last_profit_money)}</strong>
           </div>
 
           <div className="kpi">
             <span className="muted">Rendimento stimato totale</span>
-            <strong>{pctSigned(totalProfitPct)}</strong>
+            <strong>{pctSignedNullable(summary?.profit_pct)}</strong>
           </div>
 
           <div className="kpi">
             <span className="muted">Rendimento ultima operazione</span>
-            <strong>{pctSigned(lastProfitPct)}</strong>
+            <strong>{pctSignedNullable(summary?.last_profit_pct)}</strong>
           </div>
         </div>
 
@@ -208,7 +141,7 @@ export default function BTTcryptoPage() {
                   <th>Entry</th>
                   <th>Media</th>
                   <th>Massimo</th>
-                  <th>Variazione</th>
+                  <th>Trail stop</th>
                 </tr>
               </thead>
               <tbody>
@@ -217,22 +150,16 @@ export default function BTTcryptoPage() {
                     <td colSpan={6}>Nessuna posizione aperta</td>
                   </tr>
                 ) : (
-                  positions.map((row: any) => {
-                    const entry = n(row?.entry_px)
-                    const peak = n(row?.peak_px)
-                    const deltaPct = entry > 0 ? ((peak - entry) / entry) * 100 : 0
-
-                    return (
-                      <tr key={row.key}>
-                        <td>{row.token}</td>
-                        <td>{row.chain}</td>
-                        <td>{row.entry_px}</td>
-                        <td>{row.avg_px}</td>
-                        <td>{row.peak_px}</td>
-                        <td>{pctSigned(deltaPct)}</td>
-                      </tr>
-                    )
-                  })
+                  positions.map((row: any) => (
+                    <tr key={row.key}>
+                      <td>{row.token}</td>
+                      <td>{row.chain}</td>
+                      <td>{row.entry_px}</td>
+                      <td>{row.avg_px}</td>
+                      <td>{row.peak_px}</td>
+                      <td>{row.trail_stop_px}</td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -278,9 +205,6 @@ export default function BTTcryptoPage() {
 
       <div className="card">
         <h2 className="section-title">Storico operativo</h2>
-        <p className="section-sub">
-          Elenco delle operazioni registrate, con dettaglio dell’asset e della motivazione.
-        </p>
         <div className="table-wrap">
           <table>
             <thead>

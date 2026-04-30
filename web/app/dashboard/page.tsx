@@ -11,12 +11,6 @@ import {
   YAxis,
 } from 'recharts'
 
-type CryptoPoint = {
-  x: number
-  profit_money: number
-  profit_pct: number
-}
-
 type StockPoint = {
   x: number
   label: string
@@ -111,39 +105,15 @@ export default function DashboardPage() {
       .catch(() => null)
   }, [])
 
-  const cryptoCurve = crypto?.dashboard?.equity_curve || []
-
-  const cryptoPerformanceChart = useMemo<CryptoPoint[]>(() => {
-    if (!cryptoCurve.length) return []
-    const first = n(cryptoCurve[0]?.equity)
-
-    return cryptoCurve.map((row: any, idx: number) => {
-      const eq = n(row?.equity)
-      const profitMoney = eq - first
-      const profitPct = first > 0 ? (profitMoney / first) * 100 : 0
-
-      return {
-        x: idx + 1,
-        profit_money: Number(profitMoney.toFixed(2)),
-        profit_pct: Number(profitPct.toFixed(2)),
-      }
-    })
-  }, [cryptoCurve])
-
-  const cryptoTotalMoney = cryptoPerformanceChart.length
-    ? n(cryptoPerformanceChart[cryptoPerformanceChart.length - 1]?.profit_money)
-    : 0
-
-  const cryptoTotalPct = cryptoPerformanceChart.length
-    ? n(cryptoPerformanceChart[cryptoPerformanceChart.length - 1]?.profit_pct)
-    : 0
+  const cryptoSummary = crypto?.dashboard?.summary || crypto?.summary || {}
+  const cryptoChart = cryptoSummary?.chart || []
 
   const stockRows: Record<string, unknown>[] =
     stock?.latest?.summary?.portfolio_rows?.length
       ? stock?.latest?.summary?.portfolio_rows
       : stock?.latest?.summary?.top_rows || []
 
-  const stockPerformanceChart = useMemo<StockPoint[]>(() => {
+  const stockChart = useMemo<StockPoint[]>(() => {
     const NOTIONAL_PER_ASSET = 1000
 
     return stockRows.slice(0, 20).map((row: Record<string, unknown>, idx: number) => {
@@ -152,42 +122,36 @@ export default function DashboardPage() {
 
       return {
         x: idx + 1,
-        label:
-          String(row?.ticker || row?.symbol || row?.name || `Asset ${idx + 1}`),
+        label: String(row?.ticker || row?.symbol || row?.name || `Asset ${idx + 1}`),
         profit_money: Number(money.toFixed(2)),
         profit_pct: Number(pct.toFixed(2)),
       }
     })
   }, [stockRows])
 
-  const stockAvgMoney = stockPerformanceChart.length
-    ? stockPerformanceChart.reduce(
-        (acc: number, row: StockPoint) => acc + n(row.profit_money),
-        0
-      )
-    : 0
+  const stockTotalMoney = stockChart.reduce(
+    (acc: number, row: StockPoint) => acc + n(row.profit_money),
+    0
+  )
 
-  const stockAvgPct = stockPerformanceChart.length
-    ? stockPerformanceChart.reduce(
+  const stockAvgPct = stockChart.length
+    ? stockChart.reduce(
         (acc: number, row: StockPoint) => acc + n(row.profit_pct),
         0
-      ) / stockPerformanceChart.length
+      ) / stockChart.length
     : 0
 
   const combinedChart = useMemo<CombinedPoint[]>(() => {
-    const maxLen = Math.max(cryptoPerformanceChart.length, stockPerformanceChart.length)
+    const maxLen = Math.max(cryptoChart.length, stockChart.length)
 
     return Array.from({ length: maxLen }).map((_, idx: number) => {
-      const cryptoPoint = cryptoPerformanceChart[idx]
-      const stockPoint = stockPerformanceChart[idx]
+      const c = cryptoChart[idx]
+      const s = stockChart[idx]
 
-      const cryptoMoney = cryptoPoint ? n(cryptoPoint.profit_money) : 0
-      const cryptoPct = cryptoPoint ? n(cryptoPoint.profit_pct) : 0
-      const stockMoney = stockPoint ? n(stockPoint.profit_money) : 0
-      const stockPct = stockPoint ? n(stockPoint.profit_pct) : 0
-
-      const combinedMoney = (cryptoMoney + stockMoney) / 2
-      const combinedPct = (cryptoPct + stockPct) / 2
+      const cryptoMoney = c ? n(c.profit_money) : 0
+      const cryptoPct = c ? n(c.profit_pct) : 0
+      const stockMoney = s ? n(s.profit_money) : 0
+      const stockPct = s ? n(s.profit_pct) : 0
 
       return {
         x: idx + 1,
@@ -195,13 +159,13 @@ export default function DashboardPage() {
         crypto_profit_pct: cryptoPct,
         stock_profit_money: stockMoney,
         stock_profit_pct: stockPct,
-        combined_profit_money: Number(combinedMoney.toFixed(2)),
-        combined_profit_pct: Number(combinedPct.toFixed(2)),
+        combined_profit_money: Number((((cryptoMoney + stockMoney) / 2)).toFixed(2)),
+        combined_profit_pct: Number((((cryptoPct + stockPct) / 2)).toFixed(2)),
       }
     })
-  }, [cryptoPerformanceChart, stockPerformanceChart])
+  }, [cryptoChart, stockChart])
 
-  const combinedNow: CombinedPoint =
+  const combinedNow =
     combinedChart.length > 0
       ? combinedChart[combinedChart.length - 1]
       : {
@@ -214,8 +178,7 @@ export default function DashboardPage() {
           combined_profit_pct: 0,
         }
 
-  const spreadMoney =
-    n(combinedNow.crypto_profit_money) - n(combinedNow.stock_profit_money)
+  const spreadMoney = n(combinedNow.crypto_profit_money) - n(combinedNow.stock_profit_money)
 
   const sectorLeader =
     n(combinedNow.crypto_profit_money) > n(combinedNow.stock_profit_money)
@@ -237,7 +200,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="section-title">Dashboard BTTcapital</h1>
         <p className="section-sub">
-          Vista media aggregata di BTTcrypto e BTTstock con parametri aggiuntivi di sintesi.
+          Vista media aggregata di BTTcrypto e BTTstock con dati coerenti con i risultati reali disponibili.
         </p>
       </div>
 
@@ -265,15 +228,15 @@ export default function DashboardPage() {
       <div className="kpi-grid">
         <div className="kpi">
           <span className="muted">Totale BTTcrypto</span>
-          <strong>{moneySigned(cryptoTotalMoney)}</strong>
+          <strong>{moneySigned(n(cryptoSummary?.profit_money))}</strong>
         </div>
         <div className="kpi">
           <span className="muted">Rendimento BTTcrypto</span>
-          <strong>{pctSigned(cryptoTotalPct)}</strong>
+          <strong>{pctSigned(n(cryptoSummary?.profit_pct))}</strong>
         </div>
         <div className="kpi">
           <span className="muted">Totale BTTstock</span>
-          <strong>{moneySigned(stockAvgMoney)}</strong>
+          <strong>{moneySigned(stockTotalMoney)}</strong>
         </div>
         <div className="kpi">
           <span className="muted">Rendimento medio BTTstock</span>
