@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import {
   ResponsiveContainer,
@@ -10,6 +10,63 @@ import {
   YAxis,
   Tooltip,
 } from 'recharts'
+
+function parseNumber(raw: any): number | null {
+  if (raw === null || raw === undefined) return null
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+
+  const s = String(raw).trim()
+  if (!s) return null
+
+  const cleaned = s
+    .replace(/\s/g, '')
+    .replace(/€/g, '')
+    .replace(/\$/g, '')
+    .replace(/,/g, '.')
+
+  const n = Number(cleaned.replace('%', ''))
+  return Number.isFinite(n) ? n : null
+}
+
+function parsePctFromRow(row: Record<string, any>): number | null {
+  const entries = Object.entries(row || {})
+
+  const preferred = entries.find(([k]) => {
+    const kk = k.toLowerCase()
+    return (
+      kk.includes('return') ||
+      kk.includes('perf') ||
+      kk.includes('upside') ||
+      kk.includes('gain') ||
+      kk.includes('profit') ||
+      kk.includes('yield') ||
+      kk.includes('cagr')
+    )
+  })
+
+  if (preferred) {
+    const val = parseNumber(preferred[1])
+    if (val !== null) return Math.abs(val) <= 1 ? val * 100 : val
+  }
+
+  const withPercent = entries.find(([, v]) => String(v).includes('%'))
+  if (withPercent) {
+    const val = parseNumber(withPercent[1])
+    if (val !== null) return val
+  }
+
+  return null
+}
+
+function signedMoney(v: number): string {
+  const sign = v >= 0 ? '+' : '-'
+  return `${sign}$${Math.abs(v).toFixed(2)}`
+}
+
+function signedPct(v: number): string {
+  const sign = v >= 0 ? '+' : '-'
+  return `${sign}${Math.abs(v).toFixed(2)}%`
+}
 
 export default function BTTstockPage() {
   const [data, setData] = useState<any>(null)
@@ -49,9 +106,44 @@ export default function BTTstockPage() {
   }
 
   const latest = data?.latest
-  const summaryMetrics = data?.summary_metrics || {}
   const topRows = latest?.summary?.top_rows || []
   const portfolioRows = latest?.summary?.portfolio_rows || []
+  const sourceRows = portfolioRows.length ? portfolioRows : topRows
+
+  const stockMetrics = useMemo(() => {
+    const NOTIONAL_PER_ASSET = 1000
+
+    const chart = sourceRows.slice(0, 20).map((row: any, idx: number) => {
+      const pct = parsePctFromRow(row) ?? 0
+      const money = (pct / 100) * NOTIONAL_PER_ASSET
+
+      return {
+        x: idx + 1,
+        label: row?.ticker || row?.symbol || row?.name || `Asset ${idx + 1}`,
+        profit_pct: Number(pct.toFixed(2)),
+        profit_money: Number(money.toFixed(2)),
+      }
+    })
+
+    const totalMoney = chart.reduce((acc, row) => acc + row.profit_money, 0)
+    const avgPct = chart.length
+      ? chart.reduce((acc, row) => acc + row.profit_pct, 0) / chart.length
+      : 0
+
+    const wins = chart.filter((x) => x.profit_pct > 0).length
+    const losses = chart.filter((x) => x.profit_pct < 0).length
+    const last = chart.length ? chart[chart.length - 1] : { profit_money: 0, profit_pct: 0 }
+
+    return {
+      totalMoney: Number(totalMoney.toFixed(2)),
+      avgPct: Number(avgPct.toFixed(2)),
+      wins,
+      losses,
+      lastMoney: Number(last.profit_money.toFixed(2)),
+      lastPct: Number(last.profit_pct.toFixed(2)),
+      chart,
+    }
+  }, [sourceRows])
 
   return (
     <div className="shell section stack">
@@ -89,26 +181,37 @@ export default function BTTstockPage() {
 
         <div className="kpi-grid">
           <div className="kpi">
-            <span className="muted">Profitto / Perdita stimata</span>
-            <strong>${summaryMetrics?.profit_money?.toFixed?.(2) || '0.00'}</strong>
+            <span className="muted">Profitto / Perdita stimata totale</span>
+            <strong>{signedMoney(stockMetrics.totalMoney)}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Profitto / Perdita ultima voce</span>
+            <strong>{signedMoney(stockMetrics.lastMoney)}</strong>
           </div>
           <div className="kpi">
             <span className="muted">Rendimento medio %</span>
-            <strong>{summaryMetrics?.profit_pct?.toFixed?.(2) || '0.00'}%</strong>
+            <strong>{signedPct(stockMetrics.avgPct)}</strong>
           </div>
           <div className="kpi">
-            <span className="muted">Titoli positivi</span>
-            <strong>{summaryMetrics?.wins ?? 0}</strong>
-          </div>
-          <div className="kpi">
-            <span className="muted">Titoli negativi</span>
-            <strong>{summaryMetrics?.losses ?? 0}</strong>
+            <span className="muted">Rendimento ultima voce</span>
+            <strong>{signedPct(stockMetrics.lastPct)}</strong>
           </div>
         </div>
 
-        <div style={{ width: '100%', height: 320, marginTop: 16 }}>
+        <div className="kpi-grid">
+          <div className="kpi">
+            <span className="muted">Titoli positivi</span>
+            <strong>{stockMetrics.wins}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Titoli negativi</span>
+            <strong>{stockMetrics.losses}</strong>
+          </div>
+        </div>
+
+        <div style={{ width: '100%', height: 340, marginTop: 16 }}>
           <ResponsiveContainer>
-            <LineChart data={summaryMetrics?.chart || []}>
+            <LineChart data={stockMetrics.chart}>
               <XAxis dataKey="label" />
               <YAxis />
               <Tooltip />
