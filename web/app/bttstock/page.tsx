@@ -11,7 +11,14 @@ import {
   Tooltip,
 } from 'recharts'
 
-function parseNumber(raw: any): number | null {
+type StockChartPoint = {
+  x: number
+  label: string
+  profit_pct: number
+  profit_money: number
+}
+
+function parseNumber(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
 
@@ -24,11 +31,11 @@ function parseNumber(raw: any): number | null {
     .replace(/\$/g, '')
     .replace(/,/g, '.')
 
-  const n = Number(cleaned.replace('%', ''))
-  return Number.isFinite(n) ? n : null
+  const num = Number(cleaned.replace('%', ''))
+  return Number.isFinite(num) ? num : null
 }
 
-function parsePctFromRow(row: Record<string, any>): number | null {
+function parsePctFromRow(row: Record<string, unknown>): number | null {
   const entries = Object.entries(row || {})
 
   const preferred = entries.find(([k]) => {
@@ -113,8 +120,8 @@ export default function BTTstockPage() {
   const stockMetrics = useMemo(() => {
     const NOTIONAL_PER_ASSET = 1000
 
-    const chart = sourceRows.slice(0, 20).map((row: any, idx: number) => {
-      const pct = parsePctFromRow(row) ?? 0
+    const chart: StockChartPoint[] = sourceRows.slice(0, 20).map((row: any, idx: number) => {
+      const pct = parsePctFromRow(row as Record<string, unknown>) ?? 0
       const money = (pct / 100) * NOTIONAL_PER_ASSET
 
       return {
@@ -125,13 +132,13 @@ export default function BTTstockPage() {
       }
     })
 
-    const totalMoney = chart.reduce((acc, row) => acc + row.profit_money, 0)
+    const totalMoney = chart.reduce((acc: number, row: StockChartPoint) => acc + row.profit_money, 0)
     const avgPct = chart.length
-      ? chart.reduce((acc, row) => acc + row.profit_pct, 0) / chart.length
+      ? chart.reduce((acc: number, row: StockChartPoint) => acc + row.profit_pct, 0) / chart.length
       : 0
 
-    const wins = chart.filter((x) => x.profit_pct > 0).length
-    const losses = chart.filter((x) => x.profit_pct < 0).length
+    const wins = chart.filter((x: StockChartPoint) => x.profit_pct > 0).length
+    const losses = chart.filter((x: StockChartPoint) => x.profit_pct < 0).length
     const last = chart.length ? chart[chart.length - 1] : { profit_money: 0, profit_pct: 0 }
 
     return {
