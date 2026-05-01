@@ -17,14 +17,25 @@ export default function PricingPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
+  const [acceptChecked, setAcceptChecked] = useState(false)
+
+  async function refreshMe() {
+    const token = getToken()
+    if (!token) {
+      setMe(null)
+      return
+    }
+
+    try {
+      const fresh = await apiFetch<MeResponse>('/api/auth/me', undefined, true)
+      setMe(fresh)
+    } catch (e: any) {
+      setError(e.message || 'Errore caricamento utente')
+    }
+  }
 
   useEffect(() => {
-    const token = getToken()
-    if (!token) return
-
-    apiFetch<MeResponse>('/api/auth/me', undefined, true)
-      .then(setMe)
-      .catch((e: any) => setError(e.message || 'Errore caricamento utente'))
+    refreshMe()
   }, [])
 
   async function ensureLoggedIn() {
@@ -45,6 +56,11 @@ export default function PricingPage() {
       const ok = await ensureLoggedIn()
       if (!ok) return
 
+      if (!acceptChecked) {
+        setError('Devi spuntare il quadratino prima di confermare i termini')
+        return
+      }
+
       await apiFetch(
         '/api/user/accept-terms',
         {
@@ -54,8 +70,7 @@ export default function PricingPage() {
         true
       )
 
-      const fresh = await apiFetch<MeResponse>('/api/auth/me', undefined, true)
-      setMe(fresh)
+      await refreshMe()
       setMsg('Termini accettati con successo')
     } catch (e: any) {
       if (String(e.message || '').toLowerCase().includes('missing token')) {
@@ -81,7 +96,7 @@ export default function PricingPage() {
       setMe(fresh)
 
       if (!fresh.email_verified) {
-        setError('Verifica prima la tua email')
+        setError('La tua email non risulta ancora verificata')
         return
       }
 
@@ -137,22 +152,37 @@ export default function PricingPage() {
       </div>
 
       <div className="card stack">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input
+            type="checkbox"
+            checked={acceptChecked}
+            onChange={(e) => setAcceptChecked(e.target.checked)}
+          />
+          <span>Ho letto e accetto termini e policy</span>
+        </label>
+
         <button onClick={acceptTerms} disabled={busy}>
-          Accetta termini e policy
+          Conferma accettazione termini
         </button>
       </div>
 
       <div className="grid-2">
         <div className="card stack">
           <h2 className="section-title">Mensile</h2>
-          <button onClick={() => startCheckout('monthly')} disabled={busy}>
+          <button
+            onClick={() => startCheckout('monthly')}
+            disabled={busy || !me?.email_verified}
+          >
             Attiva abbonamento mensile
           </button>
         </div>
 
         <div className="card stack">
           <h2 className="section-title">Annuale</h2>
-          <button onClick={() => startCheckout('yearly')} disabled={busy}>
+          <button
+            onClick={() => startCheckout('yearly')}
+            disabled={busy || !me?.email_verified}
+          >
             Attiva abbonamento annuale
           </button>
         </div>

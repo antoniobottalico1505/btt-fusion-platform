@@ -28,8 +28,7 @@ export function clearToken() {
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  ''
+  'https://btt-fusion-backend.onrender.com'
 
 export async function apiFetch<T = any>(
   path: string,
@@ -52,13 +51,13 @@ export async function apiFetch<T = any>(
     headers,
   })
 
+  const raw = await res.text()
   let data: any = null
-  const text = await res.text()
 
   try {
-    data = text ? JSON.parse(text) : null
+    data = raw ? JSON.parse(raw) : null
   } catch {
-    data = text
+    data = raw
   }
 
   if (!res.ok) {
