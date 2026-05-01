@@ -97,7 +97,7 @@ function extractPublicMetric(row: Record<string, unknown>): number {
         !x.key.includes('qty')
     )
     .map((x) => x.value as number)
-    .find((v) => Math.abs(v) <= 5000)
+    .find((v: number) => Math.abs(v) <= 5000)
 
   return numericFallback ?? 0
 }
@@ -153,18 +153,20 @@ export default function BTTstockPage() {
   const topRows = latest?.summary?.top_rows || []
   const portfolioRows = latest?.summary?.portfolio_rows || []
 
-  // Per le performance pubbliche usiamo sempre PRIMA topRows.
   const performanceRows = topRows.length ? topRows : portfolioRows
 
   const stockMetrics = useMemo(() => {
     const NOTIONAL_PER_ASSET = 1000
 
-    const rawValues = performanceRows.slice(0, 20).map((row: Record<string, unknown>) => extractPublicMetric(row))
-    const nonZero = rawValues.some((v) => Math.abs(v) > 0.000001)
+    const rawValues: number[] = performanceRows
+      .slice(0, 20)
+      .map((row: Record<string, unknown>) => extractPublicMetric(row))
 
-    const normalizedValues = nonZero
+    const nonZero = rawValues.some((v: number) => Math.abs(v) > 0.000001)
+
+    const normalizedValues: number[] = nonZero
       ? rawValues
-      : performanceRows.slice(0, 20).map((_, idx) => (performanceRows.length - idx) * 2)
+      : performanceRows.slice(0, 20).map((_, idx: number) => (performanceRows.length - idx) * 2)
 
     const chart: StockChartPoint[] = normalizedValues.map((pct: number, idx: number) => {
       const money = (pct / 100) * NOTIONAL_PER_ASSET
