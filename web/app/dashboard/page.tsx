@@ -11,6 +11,8 @@ import {
   YAxis,
 } from 'recharts'
 
+type PublicRow = Record<string, unknown>
+
 type StockPoint = {
   x: number
   label: string
@@ -50,71 +52,41 @@ function parseNumber(raw: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
-function extractPublicMetric(row: Record<string, unknown>): number {
+function extractRealPerformanceMetric(row: PublicRow): number | null {
   const entries = Object.entries(row || {})
 
-  const preferredPercent = entries.find(([k, v]) => {
+  const strictField = entries.find(([k, v]: [string, unknown]) => {
     const kk = k.toLowerCase()
     return (
-      kk.includes('return') ||
-      kk.includes('perf') ||
-      kk.includes('performance') ||
-      kk.includes('upside') ||
-      kk.includes('gain') ||
-      kk.includes('profit') ||
-      kk.includes('yield') ||
-      kk.includes('cagr') ||
-      kk.includes('change') ||
-      kk.includes('expected')
-    ) && String(v).trim() !== ''
+      (kk.includes('return') ||
+        kk.includes('perf') ||
+        kk.includes('performance') ||
+        kk.includes('upside') ||
+        kk.includes('gain') ||
+        kk.includes('profit') ||
+        kk.includes('yield') ||
+        kk.includes('cagr') ||
+        kk.includes('expected')) &&
+      String(v).trim() !== ''
+    )
   })
 
-  if (preferredPercent) {
-    const val = parseNumber(preferredPercent[1])
+  if (strictField) {
+    const val = parseNumber(strictField[1])
     if (val !== null) return Math.abs(val) <= 1 ? val * 100 : val
   }
 
-  const percentLike = entries.find(([, v]) => String(v).includes('%'))
+  const percentLike = entries.find(([, v]: [string, unknown]) => {
+    const s = String(v).trim()
+    return s.includes('%')
+  })
+
   if (percentLike) {
     const val = parseNumber(percentLike[1])
     if (val !== null) return val
   }
 
-  const scoreLike = entries.find(([k, v]) => {
-    const kk = k.toLowerCase()
-    return (
-      (kk.includes('score') ||
-        kk.includes('rank') ||
-        kk.includes('alpha') ||
-        kk.includes('edge') ||
-        kk.includes('quality') ||
-        kk.includes('conviction')) &&
-      parseNumber(v) !== null
-    )
-  })
-
-  if (scoreLike) {
-    const val = parseNumber(scoreLike[1])
-    if (val !== null) return val
-  }
-
-  const numericFallback = entries
-    .map(([k, v]) => ({ key: k.toLowerCase(), value: parseNumber(v) }))
-    .filter(
-      (x) =>
-        x.value !== null &&
-        !x.key.includes('price') &&
-        !x.key.includes('market_cap') &&
-        !x.key.includes('mcap') &&
-        !x.key.includes('volume') &&
-        !x.key.includes('shares') &&
-        !x.key.includes('weight') &&
-        !x.key.includes('qty')
-    )
-    .map((x) => x.value as number)
-    .find((v) => Math.abs(v) <= 5000)
-
-  return numericFallback ?? 0
+  return null
 }
 
 function moneySigned(v: number): string {
@@ -133,26 +105,25 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    apiFetch('/api/public/microcap')
-      .then(setCrypto)
-      .catch((e: any) => setError(e.message || 'Errore caricamento BTTcrypto'))
+    const loadAll = () => {
+      apiFetch('/api/public/microcap')
+        .then(setCrypto)
+        .catch((e: any) => setError(e.message || 'Errore caricamento BTTcrypto'))
 
-    apiFetch('/api/public/btt/latest')
-      .then(setStock)
-      .catch(() => null)
+      apiFetch('/api/public/btt/latest')
+        .then(setStock)
+        .catch(() => null)
+    }
 
-    const t = setInterval(() => {
-      apiFetch('/api/public/microcap').then(setCrypto).catch(() => null)
-      apiFetch('/api/public/btt/latest').then(setStock).catch(() => null)
-    }, 5000)
-
+    loadAll()
+    const t = setInterval(loadAll, 5000)
     return () => clearInterval(t)
   }, [])
 
   const cryptoSummary = crypto?.dashboard?.summary || crypto?.summary || {}
   const cryptoChart = cryptoSummary?.chart || []
 
-  const stockRows: Record<string, unknown>[] =
+  const stockRows: PublicRow[] =
     stock?.latest?.summary?.top_rows?.length
       ? stock?.latest?.summary?.top_rows
       : stock?.latest?.summary?.portfolio_rows || []
@@ -160,14 +131,12 @@ export default function DashboardPage() {
   const stockChart = useMemo<StockPoint[]>(() => {
     const NOTIONAL_PER_ASSET = 1000
 
-    const rawValues = stockRows.slice(0, 20).map((row: Record<string, unknown>) => extractPublicMetric(row))
-    const nonZero = rawValues.some((v) => Math.abs(v) > 0.000001)
+    const realValues: number[] = stockRows
+      .slice(0, 20)
+      .map((row: PublicRow) => extractRealPerformanceMetric(row))
+      .filter((v: number | null): v is number => v !== null)
 
-    const normalizedValues = nonZero
-      ? rawValues
-      : stockRows.slice(0, 20).map((_, idx) => (stockRows.length - idx) * 2)
-
-    return normalizedValues.map((pct: number, idx: number) => {
+    return realValues.map((pct: number, idx: number) => {
       const money = (pct / 100) * NOTIONAL_PER_ASSET
       return {
         x: idx + 1,
@@ -292,11 +261,11 @@ export default function DashboardPage() {
         </div>
         <div className="kpi">
           <span className="muted">Totale BTTstock</span>
-          <strong>{moneySigned(stockTotalMoney)}</strong>
+          <strong>{stockChart.length ? moneySigned(stockTotalMoney) : 'N/D'}</strong>
         </div>
         <div className="kpi">
           <span className="muted">Rendimento medio BTTstock</span>
-          <strong>{pctSigned(stockAvgPct)}</strong>
+          <strong>{stockChart.length ? pctSigned(stockAvgPct) : 'N/D'}</strong>
         </div>
       </div>
 

@@ -37,71 +37,41 @@ function parseNumber(raw: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
-function extractPublicMetric(row: PublicRow): number {
+function extractRealPerformanceMetric(row: PublicRow): number | null {
   const entries = Object.entries(row || {})
 
-  const preferredPercent = entries.find(([k, v]: [string, unknown]) => {
+  const strictField = entries.find(([k, v]: [string, unknown]) => {
     const kk = k.toLowerCase()
     return (
-      kk.includes('return') ||
-      kk.includes('perf') ||
-      kk.includes('performance') ||
-      kk.includes('upside') ||
-      kk.includes('gain') ||
-      kk.includes('profit') ||
-      kk.includes('yield') ||
-      kk.includes('cagr') ||
-      kk.includes('change') ||
-      kk.includes('expected')
-    ) && String(v).trim() !== ''
+      (kk.includes('return') ||
+        kk.includes('perf') ||
+        kk.includes('performance') ||
+        kk.includes('upside') ||
+        kk.includes('gain') ||
+        kk.includes('profit') ||
+        kk.includes('yield') ||
+        kk.includes('cagr') ||
+        kk.includes('expected')) &&
+      String(v).trim() !== ''
+    )
   })
 
-  if (preferredPercent) {
-    const val = parseNumber(preferredPercent[1])
+  if (strictField) {
+    const val = parseNumber(strictField[1])
     if (val !== null) return Math.abs(val) <= 1 ? val * 100 : val
   }
 
-  const percentLike = entries.find(([, v]: [string, unknown]) => String(v).includes('%'))
+  const percentLike = entries.find(([, v]: [string, unknown]) => {
+    const s = String(v).trim()
+    return s.includes('%')
+  })
+
   if (percentLike) {
     const val = parseNumber(percentLike[1])
     if (val !== null) return val
   }
 
-  const scoreLike = entries.find(([k, v]: [string, unknown]) => {
-    const kk = k.toLowerCase()
-    return (
-      (kk.includes('score') ||
-        kk.includes('rank') ||
-        kk.includes('alpha') ||
-        kk.includes('edge') ||
-        kk.includes('quality') ||
-        kk.includes('conviction')) &&
-      parseNumber(v) !== null
-    )
-  })
-
-  if (scoreLike) {
-    const val = parseNumber(scoreLike[1])
-    if (val !== null) return val
-  }
-
-  const numericFallback = entries
-    .map(([k, v]: [string, unknown]) => ({ key: k.toLowerCase(), value: parseNumber(v) }))
-    .filter(
-      (x: { key: string; value: number | null }) =>
-        x.value !== null &&
-        !x.key.includes('price') &&
-        !x.key.includes('market_cap') &&
-        !x.key.includes('mcap') &&
-        !x.key.includes('volume') &&
-        !x.key.includes('shares') &&
-        !x.key.includes('weight') &&
-        !x.key.includes('qty')
-    )
-    .map((x: { key: string; value: number | null }) => x.value as number)
-    .find((v: number) => Math.abs(v) <= 5000)
-
-  return numericFallback ?? 0
+  return null
 }
 
 function signedMoney(v: number): string {
@@ -112,6 +82,16 @@ function signedMoney(v: number): string {
 function signedPct(v: number): string {
   const sign = v >= 0 ? '+' : '-'
   return `${sign}${Math.abs(v).toFixed(2)}%`
+}
+
+function maybeMoney(v: number | null): string {
+  if (v === null || !Number.isFinite(v)) return 'N/D'
+  return signedMoney(v)
+}
+
+function maybePct(v: number | null): string {
+  if (v === null || !Number.isFinite(v)) return 'N/D'
+  return signedPct(v)
 }
 
 export default function BTTstockPage() {
@@ -154,24 +134,19 @@ export default function BTTstockPage() {
   const latest = data?.latest
   const topRows: PublicRow[] = latest?.summary?.top_rows || []
   const portfolioRows: PublicRow[] = latest?.summary?.portfolio_rows || []
+
   const performanceRows: PublicRow[] = topRows.length ? topRows : portfolioRows
 
   const stockMetrics = useMemo(() => {
     const NOTIONAL_PER_ASSET = 1000
 
-    const rawValues: number[] = performanceRows
+    const rawValues: Array<number | null> = performanceRows
       .slice(0, 20)
-      .map((row: PublicRow) => extractPublicMetric(row))
+      .map((row: PublicRow) => extractRealPerformanceMetric(row))
 
-    const nonZero: boolean = rawValues.some((v: number) => Math.abs(v) > 0.000001)
+    const realValues: number[] = rawValues.filter((v: number | null): v is number => v !== null)
 
-    const normalizedValues: number[] = nonZero
-      ? rawValues
-      : performanceRows
-          .slice(0, 20)
-          .map((unusedRow: PublicRow, idx: number) => (performanceRows.length - idx) * 2)
-
-    const chart: StockChartPoint[] = normalizedValues.map((pct: number, idx: number) => {
+    const chart: StockChartPoint[] = realValues.map((pct: number, idx: number) => {
       const money = (pct / 100) * NOTIONAL_PER_ASSET
 
       return {
@@ -182,27 +157,38 @@ export default function BTTstockPage() {
       }
     })
 
+    if (!chart.length) {
+      return {
+        totalMoney: null,
+        avgPct: null,
+        wins: 0,
+        losses: 0,
+        lastMoney: null,
+        lastPct: null,
+        bestPct: null,
+        worstPct: null,
+        chart: [] as StockChartPoint[],
+        reportChangedAt: latest?.created_at || null,
+        usablePoints: 0,
+      }
+    }
+
     const totalMoney: number = chart.reduce(
       (acc: number, row: StockChartPoint) => acc + row.profit_money,
       0
     )
 
-    const avgPct: number = chart.length
-      ? chart.reduce((acc: number, row: StockChartPoint) => acc + row.profit_pct, 0) / chart.length
-      : 0
+    const avgPct: number = chart.reduce(
+      (acc: number, row: StockChartPoint) => acc + row.profit_pct,
+      0
+    ) / chart.length
 
     const wins: number = chart.filter((x: StockChartPoint) => x.profit_pct > 0).length
     const losses: number = chart.filter((x: StockChartPoint) => x.profit_pct < 0).length
-    const last: { profit_money: number; profit_pct: number } =
-      chart.length ? chart[chart.length - 1] : { profit_money: 0, profit_pct: 0 }
+    const last: StockChartPoint = chart[chart.length - 1]
 
-    const bestPct: number = chart.length
-      ? Math.max(...chart.map((x: StockChartPoint) => x.profit_pct))
-      : 0
-
-    const worstPct: number = chart.length
-      ? Math.min(...chart.map((x: StockChartPoint) => x.profit_pct))
-      : 0
+    const bestPct: number = Math.max(...chart.map((x: StockChartPoint) => x.profit_pct))
+    const worstPct: number = Math.min(...chart.map((x: StockChartPoint) => x.profit_pct))
 
     return {
       totalMoney: Number(totalMoney.toFixed(2)),
@@ -215,6 +201,7 @@ export default function BTTstockPage() {
       worstPct: Number(worstPct.toFixed(2)),
       chart,
       reportChangedAt: latest?.created_at || null,
+      usablePoints: chart.length,
     }
   }, [performanceRows, latest?.created_at])
 
@@ -250,6 +237,7 @@ export default function BTTstockPage() {
               created_at: latest?.created_at,
               return_code: latest?.summary?.return_code,
               report_changed_at: stockMetrics.reportChangedAt,
+              usable_public_points: stockMetrics.usablePoints,
             },
             null,
             2
@@ -263,30 +251,30 @@ export default function BTTstockPage() {
         <div className="kpi-grid">
           <div className="kpi">
             <span className="muted">Profitto / Perdita stimata totale</span>
-            <strong>{signedMoney(stockMetrics.totalMoney)}</strong>
+            <strong>{maybeMoney(stockMetrics.totalMoney)}</strong>
           </div>
           <div className="kpi">
             <span className="muted">Profitto / Perdita ultima finestra</span>
-            <strong>{signedMoney(stockMetrics.lastMoney)}</strong>
+            <strong>{maybeMoney(stockMetrics.lastMoney)}</strong>
           </div>
           <div className="kpi">
             <span className="muted">Rendimento medio %</span>
-            <strong>{signedPct(stockMetrics.avgPct)}</strong>
+            <strong>{maybePct(stockMetrics.avgPct)}</strong>
           </div>
           <div className="kpi">
             <span className="muted">Rendimento ultima finestra</span>
-            <strong>{signedPct(stockMetrics.lastPct)}</strong>
+            <strong>{maybePct(stockMetrics.lastPct)}</strong>
           </div>
         </div>
 
         <div className="kpi-grid" style={{ marginTop: 14 }}>
           <div className="kpi">
             <span className="muted">Range migliore %</span>
-            <strong>{signedPct(stockMetrics.bestPct)}</strong>
+            <strong>{maybePct(stockMetrics.bestPct)}</strong>
           </div>
           <div className="kpi">
             <span className="muted">Range peggiore %</span>
-            <strong>{signedPct(stockMetrics.worstPct)}</strong>
+            <strong>{maybePct(stockMetrics.worstPct)}</strong>
           </div>
           <div className="kpi">
             <span className="muted">Finestre positive</span>
@@ -327,7 +315,7 @@ export default function BTTstockPage() {
           <div className="stack muted">
             <span>La pagina si aggiorna automaticamente leggendo l’ultimo report disponibile.</span>
             <span>La curva cambia quando cambia il report stock sottostante.</span>
-            <span>Per un aggiornamento continuo come crypto serve un backend stock non batch.</span>
+            <span>Se il report non contiene metriche pubbliche reali, la pagina mostra N/D invece di inventare valori.</span>
           </div>
         </div>
       </div>
