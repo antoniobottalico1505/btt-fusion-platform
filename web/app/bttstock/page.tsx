@@ -11,6 +11,8 @@ import {
   Tooltip,
 } from 'recharts'
 
+type PublicRow = Record<string, unknown>
+
 type StockChartPoint = {
   x: number
   label: string
@@ -35,10 +37,10 @@ function parseNumber(raw: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
-function extractPublicMetric(row: Record<string, unknown>): number {
+function extractPublicMetric(row: PublicRow): number {
   const entries = Object.entries(row || {})
 
-  const preferredPercent = entries.find(([k, v]) => {
+  const preferredPercent = entries.find(([k, v]: [string, unknown]) => {
     const kk = k.toLowerCase()
     return (
       kk.includes('return') ||
@@ -59,13 +61,13 @@ function extractPublicMetric(row: Record<string, unknown>): number {
     if (val !== null) return Math.abs(val) <= 1 ? val * 100 : val
   }
 
-  const percentLike = entries.find(([, v]) => String(v).includes('%'))
+  const percentLike = entries.find(([, v]: [string, unknown]) => String(v).includes('%'))
   if (percentLike) {
     const val = parseNumber(percentLike[1])
     if (val !== null) return val
   }
 
-  const scoreLike = entries.find(([k, v]) => {
+  const scoreLike = entries.find(([k, v]: [string, unknown]) => {
     const kk = k.toLowerCase()
     return (
       (kk.includes('score') ||
@@ -84,9 +86,9 @@ function extractPublicMetric(row: Record<string, unknown>): number {
   }
 
   const numericFallback = entries
-    .map(([k, v]) => ({ key: k.toLowerCase(), value: parseNumber(v) }))
+    .map(([k, v]: [string, unknown]) => ({ key: k.toLowerCase(), value: parseNumber(v) }))
     .filter(
-      (x) =>
+      (x: { key: string; value: number | null }) =>
         x.value !== null &&
         !x.key.includes('price') &&
         !x.key.includes('market_cap') &&
@@ -96,7 +98,7 @@ function extractPublicMetric(row: Record<string, unknown>): number {
         !x.key.includes('weight') &&
         !x.key.includes('qty')
     )
-    .map((x) => x.value as number)
+    .map((x: { key: string; value: number | null }) => x.value as number)
     .find((v: number) => Math.abs(v) <= 5000)
 
   return numericFallback ?? 0
@@ -150,23 +152,24 @@ export default function BTTstockPage() {
   }
 
   const latest = data?.latest
-  const topRows = latest?.summary?.top_rows || []
-  const portfolioRows = latest?.summary?.portfolio_rows || []
-
-  const performanceRows = topRows.length ? topRows : portfolioRows
+  const topRows: PublicRow[] = latest?.summary?.top_rows || []
+  const portfolioRows: PublicRow[] = latest?.summary?.portfolio_rows || []
+  const performanceRows: PublicRow[] = topRows.length ? topRows : portfolioRows
 
   const stockMetrics = useMemo(() => {
     const NOTIONAL_PER_ASSET = 1000
 
     const rawValues: number[] = performanceRows
       .slice(0, 20)
-      .map((row: Record<string, unknown>) => extractPublicMetric(row))
+      .map((row: PublicRow) => extractPublicMetric(row))
 
-    const nonZero = rawValues.some((v: number) => Math.abs(v) > 0.000001)
+    const nonZero: boolean = rawValues.some((v: number) => Math.abs(v) > 0.000001)
 
     const normalizedValues: number[] = nonZero
       ? rawValues
-      : performanceRows.slice(0, 20).map((_, idx: number) => (performanceRows.length - idx) * 2)
+      : performanceRows
+          .slice(0, 20)
+          .map((unusedRow: PublicRow, idx: number) => (performanceRows.length - idx) * 2)
 
     const chart: StockChartPoint[] = normalizedValues.map((pct: number, idx: number) => {
       const money = (pct / 100) * NOTIONAL_PER_ASSET
@@ -179,21 +182,27 @@ export default function BTTstockPage() {
       }
     })
 
-    const totalMoney = chart.reduce(
+    const totalMoney: number = chart.reduce(
       (acc: number, row: StockChartPoint) => acc + row.profit_money,
       0
     )
 
-    const avgPct = chart.length
+    const avgPct: number = chart.length
       ? chart.reduce((acc: number, row: StockChartPoint) => acc + row.profit_pct, 0) / chart.length
       : 0
 
-    const wins = chart.filter((x: StockChartPoint) => x.profit_pct > 0).length
-    const losses = chart.filter((x: StockChartPoint) => x.profit_pct < 0).length
-    const last = chart.length ? chart[chart.length - 1] : { profit_money: 0, profit_pct: 0 }
+    const wins: number = chart.filter((x: StockChartPoint) => x.profit_pct > 0).length
+    const losses: number = chart.filter((x: StockChartPoint) => x.profit_pct < 0).length
+    const last: { profit_money: number; profit_pct: number } =
+      chart.length ? chart[chart.length - 1] : { profit_money: 0, profit_pct: 0 }
 
-    const bestPct = chart.length ? Math.max(...chart.map((x: StockChartPoint) => x.profit_pct)) : 0
-    const worstPct = chart.length ? Math.min(...chart.map((x: StockChartPoint) => x.profit_pct)) : 0
+    const bestPct: number = chart.length
+      ? Math.max(...chart.map((x: StockChartPoint) => x.profit_pct))
+      : 0
+
+    const worstPct: number = chart.length
+      ? Math.min(...chart.map((x: StockChartPoint) => x.profit_pct))
+      : 0
 
     return {
       totalMoney: Number(totalMoney.toFixed(2)),
