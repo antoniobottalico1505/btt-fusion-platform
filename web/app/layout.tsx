@@ -12,6 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Nav />
         <main>{children}</main>
+        <div className="site-copyright">BTTcapital 2026 <span aria-label="copyright">©</span></div>
       </body>
     </html>
   )
