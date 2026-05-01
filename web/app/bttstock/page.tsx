@@ -20,6 +20,11 @@ type StockChartPoint = {
   profit_money: number
 }
 
+type MetricColumnPick = {
+  key: string | null
+  values: number[]
+}
+
 function parseNumber(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
@@ -37,41 +42,125 @@ function parseNumber(raw: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
-function extractRealPerformanceMetric(row: PublicRow): number | null {
-  const entries = Object.entries(row || {})
+function normalizePct(values: number[]): number[] {
+  if (!values.length) return values
 
-  const strictField = entries.find(([k, v]: [string, unknown]) => {
-    const kk = k.toLowerCase()
-    return (
-      (kk.includes('return') ||
-        kk.includes('perf') ||
-        kk.includes('performance') ||
-        kk.includes('upside') ||
-        kk.includes('gain') ||
-        kk.includes('profit') ||
-        kk.includes('yield') ||
-        kk.includes('cagr') ||
-        kk.includes('expected')) &&
-      String(v).trim() !== ''
+  const absMax = Math.max(...values.map((v: number) => Math.abs(v)))
+
+  if (absMax <= 3) {
+    return values.map((v: number) => v * 100)
+  }
+
+  return values
+}
+
+function isForbiddenMetricKey(key: string): boolean {
+  const k = key.toLowerCase()
+
+  return (
+    k.includes('ticker') ||
+    k.includes('symbol') ||
+    k.includes('name') ||
+    k.includes('isin') ||
+    k.includes('country') ||
+    k.includes('exchange') ||
+    k.includes('sector') ||
+    k.includes('industry') ||
+    k.includes('currency') ||
+    k.includes('market_cap') ||
+    k.includes('mcap') ||
+    k.includes('price') ||
+    k.includes('close') ||
+    k.includes('open') ||
+    k.includes('high') ||
+    k.includes('low') ||
+    k.includes('volume') ||
+    k.includes('shares') ||
+    k.includes('qty') ||
+    k.includes('weight') ||
+    k.includes('rank') ||
+    k === 'id'
+  )
+}
+
+function metricKeyScore(key: string): number {
+  const k = key.toLowerCase()
+
+  if (
+    k.includes('return') ||
+    k.includes('perf') ||
+    k.includes('performance') ||
+    k.includes('upside') ||
+    k.includes('gain') ||
+    k.includes('profit') ||
+    k.includes('yield') ||
+    k.includes('cagr') ||
+    k.includes('expected')
+  ) {
+    return 100
+  }
+
+  if (
+    k.includes('score') ||
+    k.includes('alpha') ||
+    k.includes('edge') ||
+    k.includes('quality') ||
+    k.includes('conviction')
+  ) {
+    return 50
+  }
+
+  return 0
+}
+
+function chooseRealMetricColumn(rows: PublicRow[]): MetricColumnPick {
+  if (!rows.length) return { key: null, values: [] }
+
+  const keys = Array.from(
+    new Set(
+      rows.flatMap((row: PublicRow) => Object.keys(row || {}))
     )
-  })
+  )
 
-  if (strictField) {
-    const val = parseNumber(strictField[1])
-    if (val !== null) return Math.abs(val) <= 1 ? val * 100 : val
+  let bestKey: string | null = null
+  let bestValues: number[] = []
+  let bestScore = -Infinity
+
+  for (const key of keys) {
+    if (isForbiddenMetricKey(key)) continue
+
+    const rawValues = rows
+      .map((row: PublicRow) => parseNumber(row[key]))
+      .filter((v: number | null): v is number => v !== null)
+
+    if (rawValues.length < 3) continue
+
+    const values = normalizePct(rawValues)
+    const minV = Math.min(...values)
+    const maxV = Math.max(...values)
+    const spread = maxV - minV
+
+    if (spread === 0) continue
+
+    // escludi numeri enormi che non sono plausibili come performance %
+    if (Math.max(...values.map((v: number) => Math.abs(v))) > 1000) continue
+
+    const score =
+      metricKeyScore(key) * 10 +
+      spread +
+      rawValues.length
+
+    if (score > bestScore) {
+      bestScore = score
+      bestKey = key
+      bestValues = values
+    }
   }
 
-  const percentLike = entries.find(([, v]: [string, unknown]) => {
-    const s = String(v).trim()
-    return s.includes('%')
-  })
-
-  if (percentLike) {
-    const val = parseNumber(percentLike[1])
-    if (val !== null) return val
+  return {
+    key: bestKey,
+    values: bestValues,
   }
-
-  return null
 }
 
 function signedMoney(v: number): string {
@@ -134,21 +223,16 @@ export default function BTTstockPage() {
   const latest = data?.latest
   const topRows: PublicRow[] = latest?.summary?.top_rows || []
   const portfolioRows: PublicRow[] = latest?.summary?.portfolio_rows || []
-
   const performanceRows: PublicRow[] = topRows.length ? topRows : portfolioRows
 
   const stockMetrics = useMemo(() => {
     const NOTIONAL_PER_ASSET = 1000
 
-    const rawValues: Array<number | null> = performanceRows
-      .slice(0, 20)
-      .map((row: PublicRow) => extractRealPerformanceMetric(row))
+    const picked = chooseRealMetricColumn(performanceRows)
+    const values = picked.values
 
-    const realValues: number[] = rawValues.filter((v: number | null): v is number => v !== null)
-
-    const chart: StockChartPoint[] = realValues.map((pct: number, idx: number) => {
+    const chart: StockChartPoint[] = values.map((pct: number, idx: number) => {
       const money = (pct / 100) * NOTIONAL_PER_ASSET
-
       return {
         x: idx + 1,
         label: `Cluster ${idx + 1}`,
@@ -159,38 +243,40 @@ export default function BTTstockPage() {
 
     if (!chart.length) {
       return {
-        totalMoney: null,
-        avgPct: null,
+        pickedKey: null as string | null,
+        totalMoney: null as number | null,
+        avgPct: null as number | null,
         wins: 0,
         losses: 0,
-        lastMoney: null,
-        lastPct: null,
-        bestPct: null,
-        worstPct: null,
+        lastMoney: null as number | null,
+        lastPct: null as number | null,
+        bestPct: null as number | null,
+        worstPct: null as number | null,
         chart: [] as StockChartPoint[],
         reportChangedAt: latest?.created_at || null,
         usablePoints: 0,
       }
     }
 
-    const totalMoney: number = chart.reduce(
+    const totalMoney = chart.reduce(
       (acc: number, row: StockChartPoint) => acc + row.profit_money,
       0
     )
 
-    const avgPct: number = chart.reduce(
+    const avgPct = chart.reduce(
       (acc: number, row: StockChartPoint) => acc + row.profit_pct,
       0
     ) / chart.length
 
-    const wins: number = chart.filter((x: StockChartPoint) => x.profit_pct > 0).length
-    const losses: number = chart.filter((x: StockChartPoint) => x.profit_pct < 0).length
-    const last: StockChartPoint = chart[chart.length - 1]
+    const wins = chart.filter((x: StockChartPoint) => x.profit_pct > 0).length
+    const losses = chart.filter((x: StockChartPoint) => x.profit_pct < 0).length
+    const last = chart[chart.length - 1]
 
-    const bestPct: number = Math.max(...chart.map((x: StockChartPoint) => x.profit_pct))
-    const worstPct: number = Math.min(...chart.map((x: StockChartPoint) => x.profit_pct))
+    const bestPct = Math.max(...chart.map((x: StockChartPoint) => x.profit_pct))
+    const worstPct = Math.min(...chart.map((x: StockChartPoint) => x.profit_pct))
 
     return {
+      pickedKey: picked.key,
       totalMoney: Number(totalMoney.toFixed(2)),
       avgPct: Number(avgPct.toFixed(2)),
       wins,
@@ -238,6 +324,7 @@ export default function BTTstockPage() {
               return_code: latest?.summary?.return_code,
               report_changed_at: stockMetrics.reportChangedAt,
               usable_public_points: stockMetrics.usablePoints,
+              detected_metric_key: stockMetrics.pickedKey,
             },
             null,
             2
@@ -315,7 +402,7 @@ export default function BTTstockPage() {
           <div className="stack muted">
             <span>La pagina si aggiorna automaticamente leggendo l’ultimo report disponibile.</span>
             <span>La curva cambia quando cambia il report stock sottostante.</span>
-            <span>Se il report non contiene metriche pubbliche reali, la pagina mostra N/D invece di inventare valori.</span>
+            <span>Se il report non contiene una metrica reale leggibile, la pagina mostra N/D.</span>
           </div>
         </div>
       </div>

@@ -76,11 +76,7 @@ function extractRealPerformanceMetric(row: PublicRow): number | null {
     if (val !== null) return Math.abs(val) <= 1 ? val * 100 : val
   }
 
-  const percentLike = entries.find(([, v]: [string, unknown]) => {
-    const s = String(v).trim()
-    return s.includes('%')
-  })
-
+  const percentLike = entries.find(([, v]: [string, unknown]) => String(v).includes('%'))
   if (percentLike) {
     const val = parseNumber(percentLike[1])
     if (val !== null) return val
