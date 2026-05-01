@@ -78,6 +78,10 @@ export default function DashboardPage() {
       setMe(null)
     }
 
+    const stockPromise = apiFetch('/api/public/btt/latest')
+      .then(setStock)
+      .catch(() => setStock(null))
+
     if (meRes) {
       try {
         const cryptoRes = await apiFetch('/api/user/microcap/status', undefined, true)
@@ -94,12 +98,7 @@ export default function DashboardPage() {
       }
     }
 
-    try {
-      const stockRes = await apiFetch('/api/public/btt/latest')
-      setStock(stockRes)
-    } catch {
-      setStock(null)
-    }
+    await stockPromise
   }
 
   useEffect(() => {

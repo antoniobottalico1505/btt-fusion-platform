@@ -3,7 +3,6 @@ import threading
 import time
 import secrets
 from datetime import datetime, timedelta, timezone
-from app.services.mailer import send_email
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -17,12 +16,15 @@ from app.db import SessionLocal, get_db
 from app.dependencies import get_current_admin, get_current_user
 from app.models import AppKV, BttJob, User
 from app.schemas import (
+    AcceptTermsIn,
     AdminJsonUpdate,
     AdminTextUpdate,
     ExternalMicrocapHeartbeatIn,
+    ForgotPasswordIn,
     LoginIn,
     MicrocapControlIn,
     RegisterIn,
+    ResetPasswordIn,
     StripeCheckoutIn,
 )
 from app.security import create_access_token, get_password_hash, verify_password
@@ -39,19 +41,8 @@ from app.services.billing import create_checkout_session, handle_checkout_comple
 from app.services.bootstrap import init_app
 from app.services.btt_runner import create_btt_job
 from app.services.engine_manager import microcap_manager, user_microcap_manager
+from app.services.mailer import send_email
 from app.services.microcap_reader import read_dashboard
-from app.schemas import (
-    AcceptTermsIn,
-    AdminJsonUpdate,
-    AdminTextUpdate,
-    ExternalMicrocapHeartbeatIn,
-    ForgotPasswordIn,
-    LoginIn,
-    MicrocapControlIn,
-    RegisterIn,
-    ResetPasswordIn,
-    StripeCheckoutIn,
-)
 
 settings = get_settings()
 app = FastAPI(title=settings.APP_NAME)
@@ -142,7 +133,6 @@ def _build_crypto_summary(dashboard: dict) -> dict:
     for t in closed_ops:
         reason = str(t.get("reason") or "").lower()
         usd = _safe_num(t.get("usd_value"))
-        # euristica: stop-loss => perdita; altrimenti consideriamo positivo se valore > 0
         if "sl" in reason or "loss" in reason:
             losses += 1
         elif usd > 0:
@@ -670,6 +660,7 @@ def external_microcap_heartbeat(payload: ExternalMicrocapHeartbeatIn, db: Sessio
 
     return {"ok": True}
 
+
 @app.get("/api/public/combined/summary")
 def public_combined_summary(db: Session = Depends(get_db)):
     external_state, external_dashboard = _load_external_microcap(db)
@@ -927,6 +918,7 @@ def admin_run_btt(admin: User = Depends(get_current_admin), db: Session = Depend
         raise HTTPException(status_code=500, detail=f"BTT admin run failed: {type(exc).__name__}: {exc}")
     return {"job_id": job.id, "status": job.status}
 
+
 @app.get("/api/admin/btt/jobs")
 def admin_list_btt_jobs(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     jobs = db.scalars(select(BttJob).order_by(desc(BttJob.created_at)).limit(30)).all()
@@ -945,7 +937,7 @@ def admin_list_btt_jobs(admin: User = Depends(get_current_admin), db: Session = 
                 "created_at": job.created_at,
                 "summary": summary,
                 "stdout_log": _tail(job.stdout_log, 5000),
-                "error_log": _tail(job.error_log, 3000),            
+                "error_log": _tail(job.error_log, 3000),
             }
         )
 

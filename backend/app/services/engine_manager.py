@@ -58,25 +58,28 @@ class ManagedMicrocapProcess:
         except Exception:
             return ""
 
+    def _status_unlocked(self) -> dict[str, Any]:
+        running = self._proc is not None and self._proc.poll() is None
+        if self._proc is not None and not running:
+            self._last_exit_code = self._proc.poll()
+
+        return {
+            "running": running,
+            "pid": self._proc.pid if self._proc else None,
+            "started_at_epoch": self._started_at,
+            "mode": self._desired_mode,
+            "uptime_sec": (time.time() - self._started_at) if (running and self._started_at) else 0,
+            "live_enabled": settings.MICROCAP_LIVE_ENABLED,
+            "exit_code": None if running else self._last_exit_code,
+            "last_error": self._last_error,
+            "log_tail": self._tail_log(),
+            "scope": self._name,
+            "session_exists": self._session_exists,
+        }
+
     def status(self) -> dict[str, Any]:
         with self._lock:
-            running = self._proc is not None and self._proc.poll() is None
-            if self._proc is not None and not running:
-                self._last_exit_code = self._proc.poll()
-
-            return {
-                "running": running,
-                "pid": self._proc.pid if self._proc else None,
-                "started_at_epoch": self._started_at,
-                "mode": self._desired_mode,
-                "uptime_sec": (time.time() - self._started_at) if (running and self._started_at) else 0,
-                "live_enabled": settings.MICROCAP_LIVE_ENABLED,
-                "exit_code": None if running else self._last_exit_code,
-                "last_error": self._last_error,
-                "log_tail": self._tail_log(),
-                "scope": self._name,
-                "session_exists": self._session_exists,
-            }
+            return self._status_unlocked()
 
     def has_session(self) -> bool:
         with self._lock:
@@ -147,7 +150,7 @@ class ManagedMicrocapProcess:
             self._session_exists = True
 
             if self._proc and self._proc.poll() is None:
-                return self.status()
+                return self._status_unlocked()
 
             try:
                 self._spawn()
@@ -165,7 +168,7 @@ class ManagedMicrocapProcess:
                 self._proc = None
                 self._started_at = None
 
-            return self.status()
+            return self._status_unlocked()
 
     def stop(self) -> dict[str, Any]:
         with self._lock:
@@ -187,7 +190,7 @@ class ManagedMicrocapProcess:
             self._proc = None
             self._started_at = None
             self._close_log()
-            return self.status()
+            return self._status_unlocked()
 
     def restart(self, mode: str | None = None) -> dict[str, Any]:
         self.stop()
