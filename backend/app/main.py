@@ -462,25 +462,41 @@ def health() -> dict:
 
 @app.post("/api/auth/register")
 def register(payload: RegisterIn, db: Session = Depends(get_db)):
-    existing = db.scalar(select(User).where(User.email == payload.email.lower()))
+    email = payload.email.lower().strip()
+    existing = db.scalar(select(User).where(User.email == email))
+
     if existing:
-        raise HTTPException(status_code=400, detail="Email già registrata")
+        if existing.email_verified:
+            raise HTTPException(
+                status_code=400,
+                detail="Email già verificata e registrata. Fai direttamente il login."
+            )
 
-    verify_token = _create_one_time_token()
+        verify_token = _create_one_time_token()
+        existing.password_hash = get_password_hash(payload.password)
+        existing.full_name = payload.full_name or existing.full_name
+        existing.is_active = True
+        existing.email_verified = False
+        existing.email_verify_token = verify_token
+        db.commit()
+        db.refresh(existing)
+        user = existing
+    else:
+        verify_token = _create_one_time_token()
 
-    user = User(
-        email=payload.email.lower(),
-        password_hash=get_password_hash(payload.password),
-        full_name=payload.full_name,
-        is_active=True,
-        email_verified=False,
-        email_verify_token=verify_token,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+        user = User(
+            email=email,
+            password_hash=get_password_hash(payload.password),
+            full_name=payload.full_name,
+            is_active=True,
+            email_verified=False,
+            email_verify_token=verify_token,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
-    verify_link = _public_url(f"/verify-email?token={verify_token}")
+    verify_link = _public_url(f"/verify-email?token={user.email_verify_token}")
 
     try:
         send_email(
@@ -493,60 +509,55 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
             """,
         )
     except Exception as exc:
-        try:
-            db.delete(user)
-            db.commit()
-        except Exception:
-            db.rollback()
-        raise HTTPException(status_code=500, detail=f"Invio email verifica fallito: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Invio email verifica fallito: {exc}"
+        )
 
     return {
-        "message": "Account creato. Verifica la tua email prima di accedere."
+        "message": "Account creato. Verifica la tua email una sola volta, poi potrai entrare sempre."
     }
 
 
 @app.post("/api/auth/login")
 def login(payload: LoginIn, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == payload.email.lower()))
+    email = payload.email.lower().strip()
+    user = db.scalar(select(User).where(User.email == email))
+
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Credenziali non valide")
 
     if not user.email_verified:
-        raise HTTPException(status_code=403, detail="Verifica prima la tua email")
+        raise HTTPException(
+            status_code=403,
+            detail="Verifica prima la tua email. La verifica si fa una sola volta."
+        )
 
     token = create_access_token(user.email, extra={"is_admin": user.is_admin})
     return {"access_token": token, "token_type": "bearer"}
 
 
-@app.get("/api/auth/me")
-def me(user: User = Depends(get_current_user)):
-    return {
-        "id": user.id,
-        "email": user.email,
-        "full_name": user.full_name,
-        "is_admin": user.is_admin,
-        "subscription_status": user.subscription_status,
-        "subscription_plan": user.subscription_plan,
-        "trial_started_at": user.trial_started_at,
-        "trial_expires_at": user.trial_expires_at,
-        "has_access": has_access(user),
-        "email_verified": bool(user.email_verified),
-        "accepted_terms_version": user.accepted_terms_version or "",
-        "terms_ok": _user_terms_ok(user),
-        "live_unlocked": _user_live_unlocked(user),
-    }
-
-
 @app.get("/api/auth/verify-email")
 def verify_email(token: str, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email_verify_token == token))
+
     if not user:
         raise HTTPException(status_code=400, detail="Token verifica non valido")
+
+    if user.email_verified:
+        return {
+            "message": "Email già verificata",
+            "email_verified": True
+        }
 
     user.email_verified = True
     user.email_verify_token = ""
     db.commit()
-    return {"message": "Email verificata con successo"}
+
+    return {
+        "message": "Email verificata con successo. Da ora puoi entrare sempre senza rifare la verifica.",
+        "email_verified": True
+    }
 
 
 @app.post("/api/auth/forgot-password")

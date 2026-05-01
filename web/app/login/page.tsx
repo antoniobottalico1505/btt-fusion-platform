@@ -30,10 +30,16 @@ export default function LoginPage() {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       })
+
+      if (!res?.access_token) {
+        setError('Token login non ricevuto')
+        return
+      }
+
       setToken(res.access_token)
       router.push('/dashboard')
     } catch (err: any) {
-      setError(err.message)
+      setError(err.message || 'Errore login')
     }
   }
 
