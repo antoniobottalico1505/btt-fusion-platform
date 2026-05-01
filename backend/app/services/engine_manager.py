@@ -5,17 +5,19 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from app.core.settings import get_settings
 from app.services.admin_config import get_microcap_env
-from app.services.storage import PRIVATE, engine_paths
+from app.services.storage import PRIVATE, engine_paths, ensure_user_microcap_workspace, user_microcap_paths
 
 settings = get_settings()
 
 
-class MicrocapProcessManager:
-    def __init__(self) -> None:
+class ManagedMicrocapProcess:
+    def __init__(self, workdir_source: Path | Callable[[], Path], name: str = "public") -> None:
+        self._workdir_source = workdir_source
+        self._name = name
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
         self._started_at: float | None = None
@@ -26,7 +28,9 @@ class MicrocapProcessManager:
 
     @property
     def workdir(self) -> Path:
-        return PRIVATE / "microcap"
+        if callable(self._workdir_source):
+            return self._workdir_source()
+        return self._workdir_source
 
     @property
     def log_path(self) -> Path:
@@ -64,6 +68,7 @@ class MicrocapProcessManager:
                 "exit_code": None if running else self._last_exit_code,
                 "last_error": self._last_error,
                 "log_tail": self._tail_log(),
+                "scope": self._name,
             }
 
     def _force_safe_webservice_config(self) -> None:
@@ -74,14 +79,17 @@ class MicrocapProcessManager:
         txt = config_path.read_text(encoding="utf-8")
         original = txt
 
-        if self._desired_mode == "paper":
-            if re.search(r"(?mi)^mode\s*:", txt):
-                txt = re.sub(r"(?mi)^mode\s*:\s*live\s*$", "mode: paper", txt)
-            else:
-                txt = f"mode: paper\n{txt}"
+        desired_mode = (self._desired_mode or settings.MICROCAP_PUBLIC_MODE or "paper").strip().lower()
+        if desired_mode not in {"paper", "live"}:
+            desired_mode = "paper"
+
+        if re.search(r"(?mi)^mode\s*:", txt):
+            txt = re.sub(r"(?mi)^mode\s*:\s*\S+\s*$", f"mode: {desired_mode}", txt)
+        else:
+            txt = f"mode: {desired_mode}\n{txt}"
 
         if re.search(r"(?mi)^metrics_enabled\s*:", txt):
-            txt = re.sub(r"(?mi)^metrics_enabled\s*:\s*true\s*$", "metrics_enabled: false", txt)
+            txt = re.sub(r"(?mi)^metrics_enabled\s*:\s*\S+\s*$", "metrics_enabled: false", txt)
         else:
             txt = txt.rstrip() + "\nmetrics_enabled: false\n"
 
@@ -97,7 +105,7 @@ class MicrocapProcessManager:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
         with self.log_path.open("a", encoding="utf-8") as f:
-            f.write(f"\n\n===== MICROCAP START {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n")
+            f.write(f"\n\n===== MICROCAP START {time.strftime('%Y-%m-%d %H:%M:%S')} [{self._name}] =====\n")
 
         env = os.environ.copy()
         env.update({k: str(v) for k, v in get_microcap_env(masked=False).items() if v not in (None, "")})
@@ -164,4 +172,35 @@ class MicrocapProcessManager:
         return self.start(mode=mode)
 
 
-microcap_manager = MicrocapProcessManager()
+class UserMicrocapSessionManager:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sessions: dict[int, ManagedMicrocapProcess] = {}
+
+    def _session_for(self, user_id: int) -> ManagedMicrocapProcess:
+        with self._lock:
+            if user_id not in self._sessions:
+                ensure_user_microcap_workspace(user_id)
+                self._sessions[user_id] = ManagedMicrocapProcess(
+                    lambda uid=user_id: user_microcap_paths(uid)["workdir"],
+                    name=f"user_{user_id}",
+                )
+            return self._sessions[user_id]
+
+    def status(self, user_id: int) -> dict[str, Any]:
+        return self._session_for(user_id).status()
+
+    def start(self, user_id: int, mode: str | None = None) -> dict[str, Any]:
+        ensure_user_microcap_workspace(user_id)
+        return self._session_for(user_id).start(mode=mode)
+
+    def stop(self, user_id: int) -> dict[str, Any]:
+        return self._session_for(user_id).stop()
+
+    def restart(self, user_id: int, mode: str | None = None) -> dict[str, Any]:
+        ensure_user_microcap_workspace(user_id)
+        return self._session_for(user_id).restart(mode=mode)
+
+
+microcap_manager = ManagedMicrocapProcess(PRIVATE / "microcap", name="public")
+user_microcap_manager = UserMicrocapSessionManager()

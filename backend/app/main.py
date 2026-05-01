@@ -38,7 +38,7 @@ from app.services.admin_config import (
 from app.services.billing import create_checkout_session, handle_checkout_completed, stripe_ready
 from app.services.bootstrap import init_app
 from app.services.btt_runner import create_btt_job
-from app.services.engine_manager import microcap_manager
+from app.services.engine_manager import microcap_manager, user_microcap_manager
 from app.services.microcap_reader import read_dashboard
 from app.schemas import (
     AcceptTermsIn,
@@ -78,6 +78,14 @@ def _upsert_kv(db: Session, key: str, value) -> None:
     else:
         row.value = payload
     db.commit()
+
+
+def _user_live_unlocked(user: User) -> bool:
+    return bool(
+        getattr(user, "email_verified", False)
+        and getattr(user, "subscription_status", "") == "active"
+        and settings.MICROCAP_LIVE_ENABLED
+    )
 
 
 def _load_external_microcap(db: Session):
@@ -524,6 +532,7 @@ def me(user: User = Depends(get_current_user)):
         "email_verified": bool(user.email_verified),
         "accepted_terms_version": user.accepted_terms_version or "",
         "terms_ok": _user_terms_ok(user),
+        "live_unlocked": _user_live_unlocked(user),
     }
 
 
@@ -715,6 +724,65 @@ def activate_trial(user: User = Depends(get_current_user), db: Session = Depends
         "message": "La trial è stata rimossa. L'accesso è illimitato dopo verifica email.",
         "email_verified": bool(user.email_verified),
     }
+
+
+@app.get("/api/user/microcap/status")
+def user_microcap_status(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not has_access(user):
+        raise HTTPException(status_code=403, detail="Verifica prima la tua email per accedere")
+
+    user_status = user_microcap_manager.status(user.id)
+    if user_status.get("running"):
+        dashboard = read_dashboard(user_id=user.id)
+        process = dict(user_status)
+        process["scope"] = "user"
+    else:
+        external_state, external_dashboard = _load_external_microcap(db)
+        if external_state is not None:
+            dashboard = external_dashboard or {}
+            process = dict(external_state)
+            process["scope"] = "public_fallback_external"
+        else:
+            public_status = microcap_manager.status()
+            if settings.MICROCAP_AUTO_START and not public_status.get("running"):
+                public_status = microcap_manager.start(mode=settings.MICROCAP_PUBLIC_MODE)
+            process = dict(public_status)
+            process["scope"] = "public_fallback_internal"
+            dashboard = read_dashboard()
+
+    return {
+        "process": process,
+        "dashboard": dashboard,
+        "summary": _build_crypto_summary(dashboard),
+        "public_mode": process.get("mode") or settings.MICROCAP_PUBLIC_MODE,
+        "live_available": settings.MICROCAP_LIVE_ENABLED,
+        "live_unlocked": _user_live_unlocked(user),
+        "subscription_status": user.subscription_status,
+        "email_verified": bool(user.email_verified),
+        "session_scope": process.get("scope"),
+    }
+
+
+@app.post("/api/user/microcap/start-paper")
+def user_microcap_start_paper(user: User = Depends(get_current_user)):
+    if not has_access(user):
+        raise HTTPException(status_code=403, detail="Verifica prima la tua email per accedere")
+
+    return user_microcap_manager.restart(user.id, mode="paper")
+
+
+@app.post("/api/user/microcap/start-live")
+def user_microcap_start_live(user: User = Depends(get_current_user)):
+    _ensure_live_access(user)
+    return user_microcap_manager.restart(user.id, mode="live")
+
+
+@app.post("/api/user/microcap/stop")
+def user_microcap_stop(user: User = Depends(get_current_user)):
+    if not has_access(user):
+        raise HTTPException(status_code=403, detail="Verifica prima la tua email per accedere")
+
+    return user_microcap_manager.stop(user.id)
 
 
 @app.post("/api/user/btt/run")

@@ -54,27 +54,93 @@ function maybePct(v: unknown): string {
 }
 
 export default function DashboardPage() {
+  const [me, setMe] = useState<any>(null)
   const [crypto, setCrypto] = useState<any>(null)
   const [stock, setStock] = useState<any>(null)
   const [error, setError] = useState('')
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    const loadAll = () => {
-      apiFetch('/api/public/microcap')
-        .then(setCrypto)
-        .catch((e: any) => setError(e.message || 'Errore caricamento BTTcrypto'))
-
-      apiFetch('/api/public/btt/latest')
-        .then(setStock)
-        .catch(() => null)
+  async function loadAll() {
+    try {
+      const meRes = await apiFetch('/api/auth/me', undefined, true)
+      setMe(meRes)
+    } catch {
+      setMe(null)
     }
 
+    try {
+      const cryptoRes = await apiFetch('/api/user/microcap/status', undefined, true)
+      setCrypto(cryptoRes)
+    } catch {
+      try {
+        const fallbackCrypto = await apiFetch('/api/public/microcap')
+        setCrypto(fallbackCrypto)
+      } catch (e: any) {
+        setError(e.message || 'Errore caricamento BTTcrypto')
+      }
+    }
+
+    try {
+      const stockRes = await apiFetch('/api/public/btt/latest')
+      setStock(stockRes)
+    } catch {
+      setStock(null)
+    }
+  }
+
+  useEffect(() => {
     loadAll()
     const t = setInterval(loadAll, 5000)
     return () => clearInterval(t)
   }, [])
 
-  const cryptoSummary = crypto?.dashboard?.summary || crypto?.summary || {}
+  async function startPaper() {
+    setBusy(true)
+    setError('')
+    setMsg('')
+    try {
+      await apiFetch('/api/user/microcap/start-paper', { method: 'POST' }, true)
+      setMsg('Istanza personale paper attivata')
+      await loadAll()
+    } catch (e: any) {
+      setError(e.message || 'Errore avvio paper')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function startLive() {
+    setBusy(true)
+    setError('')
+    setMsg('')
+    try {
+      await apiFetch('/api/user/microcap/start-live', { method: 'POST' }, true)
+      setMsg('Istanza personale live attivata')
+      await loadAll()
+    } catch (e: any) {
+      setError(e.message || 'Errore avvio live')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function stopSession() {
+    setBusy(true)
+    setError('')
+    setMsg('')
+    try {
+      await apiFetch('/api/user/microcap/stop', { method: 'POST' }, true)
+      setMsg('Istanza personale fermata')
+      await loadAll()
+    } catch (e: any) {
+      setError(e.message || 'Errore stop sessione')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cryptoSummary = crypto?.summary || crypto?.dashboard?.summary || {}
   const cryptoChart: ChartPoint[] = cryptoSummary?.chart || []
 
   const stockSummary = stock?.summary_metrics || {}
@@ -138,6 +204,12 @@ export default function DashboardPage() {
     ? (positiveCombinedPoints / combinedChart.length) * 100
     : 0
 
+  const liveUnlocked = !!crypto?.live_unlocked
+  const liveAvailable = !!crypto?.live_available
+  const currentMode = crypto?.process?.mode || crypto?.public_mode || 'paper'
+  const sessionScope = crypto?.session_scope || crypto?.process?.scope || 'public'
+  const processRunning = !!crypto?.process?.running
+
   return (
     <div className="shell section stack">
       <div>
@@ -147,7 +219,41 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {msg ? <div className="good">{msg}</div> : null}
       {error ? <div className="bad">{error}</div> : null}
+
+      <div className="card">
+        <h2 className="section-title">Istanza personale microcap</h2>
+        <div className="stack muted">
+          <span>Email verificata: {me?.email_verified ? 'Sì' : 'No'}</span>
+          <span>Abbonamento: {me?.subscription_status || 'inactive'}</span>
+          <span>Live disponibile lato server: {liveAvailable ? 'Sì' : 'No'}</span>
+          <span>Live sbloccato per questo account: {liveUnlocked ? 'Sì' : 'No'}</span>
+          <span>Modalità attuale: {currentMode}</span>
+          <span>Session scope: {sessionScope}</span>
+          <span>Motore attivo: {processRunning ? 'Sì' : 'No'}</span>
+        </div>
+
+        <div className="actions" style={{ marginTop: 16 }}>
+          <button onClick={startPaper} disabled={busy}>
+            Avvia paper personale
+          </button>
+          <button
+            className="secondary"
+            onClick={startLive}
+            disabled={busy || !liveUnlocked}
+          >
+            Avvia live personale
+          </button>
+          <button
+            className="ghost"
+            onClick={stopSession}
+            disabled={busy}
+          >
+            Ferma sessione personale
+          </button>
+        </div>
+      </div>
 
       <div className="card">
         <h2 className="section-title">Base temporale dei risultati</h2>
@@ -238,6 +344,11 @@ export default function DashboardPage() {
                 current_spread_pct: Number(spreadPct.toFixed(2)),
                 stock_points: stockPublic?.point_count ?? 0,
                 stock_metric_key: stockPublic?.metric_key ?? null,
+                live_unlocked: liveUnlocked,
+                live_available: liveAvailable,
+                current_mode: currentMode,
+                session_scope: sessionScope,
+                process_running: processRunning,
               },
               null,
               2

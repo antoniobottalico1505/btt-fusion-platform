@@ -12,9 +12,9 @@ settings = get_settings()
 ROOT = Path(settings.STORAGE_ROOT).resolve()
 PRIVATE = ROOT / "private"
 PUBLIC = ROOT / "public"
+USER_MICROCAP = PRIVATE / "microcap_users"
 SEED = Path(__file__).resolve().parents[2] / "seed"
 ENGINES = Path(__file__).resolve().parents[1] / "engines"
-
 
 def _ensure_microcap_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -207,6 +207,7 @@ def ensure_storage() -> None:
         PRIVATE,
         PUBLIC,
         PRIVATE / "microcap",
+        USER_MICROCAP,
         PRIVATE / "btt",
         PRIVATE / "btt_runs",
         PUBLIC / "exports",
@@ -259,3 +260,52 @@ def engine_paths() -> dict[str, Path]:
         "btt": ENGINES / "btt_capital_bomb_final.py",
         "viewer": ENGINES / "viewer_dashboard.py",
     }
+
+
+def _copy_seed_file(src_candidates: list[Path], dst: Path) -> None:
+    if dst.exists():
+        return
+
+    for src in src_candidates:
+        if src.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(src.read_bytes())
+            return
+
+
+def user_microcap_paths(user_id: int) -> dict[str, Path]:
+    workdir = USER_MICROCAP / f"user_{user_id}"
+    return {
+        "workdir": workdir,
+        "db": workdir / "bot.db",
+        "config": workdir / "config.yaml",
+        "runtime_env": workdir / "runtime_env.json",
+        "log": workdir / "microcap_engine.log",
+    }
+
+
+def ensure_user_microcap_workspace(user_id: int) -> dict[str, Path]:
+    paths = user_microcap_paths(user_id)
+    paths["workdir"].mkdir(parents=True, exist_ok=True)
+
+    _copy_seed_file(
+        [
+            PRIVATE / "microcap" / "config.yaml",
+            SEED / "microcap_config.yaml",
+        ],
+        paths["config"],
+    )
+
+    _copy_seed_file(
+        [
+            PRIVATE / "microcap" / "runtime_env.json",
+            SEED / "microcap_env.json",
+        ],
+        paths["runtime_env"],
+    )
+
+    if not paths["db"].exists():
+        _ensure_microcap_db(paths["db"])
+    _migrate_existing_microcap_db(paths["db"])
+
+    return paths
