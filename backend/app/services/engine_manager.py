@@ -9,7 +9,12 @@ from typing import Any, Callable
 
 from app.core.settings import get_settings
 from app.services.admin_config import get_microcap_env
-from app.services.storage import PRIVATE, engine_paths, ensure_user_microcap_workspace, user_microcap_paths
+from app.services.storage import (
+    PRIVATE,
+    engine_paths,
+    ensure_user_microcap_workspace,
+    user_microcap_paths,
+)
 
 settings = get_settings()
 
@@ -25,6 +30,7 @@ class ManagedMicrocapProcess:
         self._last_error: str = ""
         self._last_exit_code: int | None = None
         self._log_fp = None
+        self._session_exists: bool = False
 
     @property
     def workdir(self) -> Path:
@@ -69,7 +75,12 @@ class ManagedMicrocapProcess:
                 "last_error": self._last_error,
                 "log_tail": self._tail_log(),
                 "scope": self._name,
+                "session_exists": self._session_exists,
             }
+
+    def has_session(self) -> bool:
+        with self._lock:
+            return self._session_exists
 
     def _force_safe_webservice_config(self) -> None:
         config_path = self.workdir / "config.yaml"
@@ -126,18 +137,28 @@ class ManagedMicrocapProcess:
         self._started_at = time.time()
         self._last_error = ""
         self._last_exit_code = None
+        self._session_exists = True
 
     def start(self, mode: str | None = None) -> dict[str, Any]:
         with self._lock:
             if mode:
                 self._desired_mode = mode.strip().lower()
 
+            self._session_exists = True
+
             if self._proc and self._proc.poll() is None:
                 return self.status()
 
             try:
                 self._spawn()
-                time.sleep(1.2)
+                time.sleep(2.0)
+
+                if self._proc is not None and self._proc.poll() is not None:
+                    self._last_exit_code = self._proc.poll()
+                    tail = self._tail_log(3000).strip()
+                    self._last_error = tail or f"Process exited immediately with code {self._last_exit_code}"
+                    self._proc = None
+                    self._started_at = None
             except Exception as exc:
                 self._last_error = f"{type(exc).__name__}: {exc}"
                 self._last_exit_code = None
@@ -148,6 +169,8 @@ class ManagedMicrocapProcess:
 
     def stop(self) -> dict[str, Any]:
         with self._lock:
+            self._session_exists = True
+
             if self._proc and self._proc.poll() is None:
                 try:
                     self._proc.terminate()
@@ -187,19 +210,27 @@ class UserMicrocapSessionManager:
                 )
             return self._sessions[user_id]
 
-    def status(self, user_id: int) -> dict[str, Any]:
-        return self._session_for(user_id).status()
+    def status(self, user_id: int, create: bool = False) -> dict[str, Any] | None:
+        with self._lock:
+            if user_id not in self._sessions:
+                if not create:
+                    return None
+                ensure_user_microcap_workspace(user_id)
+                self._sessions[user_id] = ManagedMicrocapProcess(
+                    lambda uid=user_id: user_microcap_paths(uid)["workdir"],
+                    name=f"user_{user_id}",
+                )
 
-    def start(self, user_id: int, mode: str | None = None) -> dict[str, Any]:
-        ensure_user_microcap_workspace(user_id)
-        return self._session_for(user_id).start(mode=mode)
+            session = self._sessions[user_id]
 
-    def stop(self, user_id: int) -> dict[str, Any]:
-        return self._session_for(user_id).stop()
+        return session.status()
 
     def restart(self, user_id: int, mode: str | None = None) -> dict[str, Any]:
         ensure_user_microcap_workspace(user_id)
         return self._session_for(user_id).restart(mode=mode)
+
+    def stop(self, user_id: int) -> dict[str, Any]:
+        return self._session_for(user_id).stop()
 
 
 microcap_manager = ManagedMicrocapProcess(PRIVATE / "microcap", name="public")

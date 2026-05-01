@@ -88,6 +88,17 @@ def _user_live_unlocked(user: User) -> bool:
     )
 
 
+def _ensure_live_access(user: User) -> None:
+    if not getattr(user, "email_verified", False):
+        raise HTTPException(status_code=403, detail="Verifica prima la tua email")
+
+    if getattr(user, "subscription_status", "") != "active":
+        raise HTTPException(status_code=402, detail="Abbonamento attivo richiesto per la modalità live")
+
+    if not settings.MICROCAP_LIVE_ENABLED:
+        raise HTTPException(status_code=403, detail="Live non abilitato dal server")
+
+
 def _load_external_microcap(db: Session):
     state_row = db.scalar(select(AppKV).where(AppKV.key == "external_microcap_state"))
     dash_row = db.scalar(select(AppKV).where(AppKV.key == "external_microcap_dashboard"))
@@ -731,8 +742,9 @@ def user_microcap_status(user: User = Depends(get_current_user), db: Session = D
     if not has_access(user):
         raise HTTPException(status_code=403, detail="Verifica prima la tua email per accedere")
 
-    user_status = user_microcap_manager.status(user.id)
-    if user_status.get("running"):
+    user_status = user_microcap_manager.status(user.id, create=False)
+
+    if user_status is not None and user_status.get("session_exists"):
         dashboard = read_dashboard(user_id=user.id)
         process = dict(user_status)
         process["scope"] = "user"
@@ -768,13 +780,15 @@ def user_microcap_start_paper(user: User = Depends(get_current_user)):
     if not has_access(user):
         raise HTTPException(status_code=403, detail="Verifica prima la tua email per accedere")
 
-    return user_microcap_manager.restart(user.id, mode="paper")
+    status = user_microcap_manager.restart(user.id, mode="paper")
+    return {"ok": bool(status.get("running")), "status": status}
 
 
 @app.post("/api/user/microcap/start-live")
 def user_microcap_start_live(user: User = Depends(get_current_user)):
     _ensure_live_access(user)
-    return user_microcap_manager.restart(user.id, mode="live")
+    status = user_microcap_manager.restart(user.id, mode="live")
+    return {"ok": bool(status.get("running")), "status": status}
 
 
 @app.post("/api/user/microcap/stop")
@@ -782,7 +796,8 @@ def user_microcap_stop(user: User = Depends(get_current_user)):
     if not has_access(user):
         raise HTTPException(status_code=403, detail="Verifica prima la tua email per accedere")
 
-    return user_microcap_manager.stop(user.id)
+    status = user_microcap_manager.stop(user.id)
+    return {"ok": True, "status": status}
 
 
 @app.post("/api/user/btt/run")

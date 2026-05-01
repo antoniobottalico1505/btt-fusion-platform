@@ -53,6 +53,12 @@ function maybePct(v: unknown): string {
   return pctSigned(x)
 }
 
+function shortError(value: unknown): string {
+  const s = String(value || '').trim()
+  if (!s) return ''
+  return s.length > 700 ? `${s.slice(0, 700)}...` : s
+}
+
 export default function DashboardPage() {
   const [me, setMe] = useState<any>(null)
   const [crypto, setCrypto] = useState<any>(null)
@@ -62,17 +68,24 @@ export default function DashboardPage() {
   const [busy, setBusy] = useState(false)
 
   async function loadAll() {
+    setError('')
+
+    let meRes: any = null
     try {
-      const meRes = await apiFetch('/api/auth/me', undefined, true)
+      meRes = await apiFetch('/api/auth/me', undefined, true)
       setMe(meRes)
     } catch {
       setMe(null)
     }
 
-    try {
-      const cryptoRes = await apiFetch('/api/user/microcap/status', undefined, true)
-      setCrypto(cryptoRes)
-    } catch {
+    if (meRes) {
+      try {
+        const cryptoRes = await apiFetch('/api/user/microcap/status', undefined, true)
+        setCrypto(cryptoRes)
+      } catch (e: any) {
+        setError(e.message || 'Errore caricamento sessione microcap')
+      }
+    } else {
       try {
         const fallbackCrypto = await apiFetch('/api/public/microcap')
         setCrypto(fallbackCrypto)
@@ -99,9 +112,23 @@ export default function DashboardPage() {
     setBusy(true)
     setError('')
     setMsg('')
+
     try {
-      await apiFetch('/api/user/microcap/start-paper', { method: 'POST' }, true)
-      setMsg('Istanza personale paper attivata')
+      const res = await apiFetch<any>('/api/user/microcap/start-paper', { method: 'POST' }, true)
+      const status = res?.status || res
+
+      if (!status?.running) {
+        setError(shortError(status?.last_error || 'Avvio paper fallito'))
+      } else {
+        setMsg('Istanza personale paper attivata')
+      }
+
+      setCrypto((prev: any) => ({
+        ...(prev || {}),
+        process: status,
+        session_scope: 'user',
+      }))
+
       await loadAll()
     } catch (e: any) {
       setError(e.message || 'Errore avvio paper')
@@ -114,9 +141,23 @@ export default function DashboardPage() {
     setBusy(true)
     setError('')
     setMsg('')
+
     try {
-      await apiFetch('/api/user/microcap/start-live', { method: 'POST' }, true)
-      setMsg('Istanza personale live attivata')
+      const res = await apiFetch<any>('/api/user/microcap/start-live', { method: 'POST' }, true)
+      const status = res?.status || res
+
+      if (!status?.running) {
+        setError(shortError(status?.last_error || 'Avvio live fallito'))
+      } else {
+        setMsg('Istanza personale live attivata')
+      }
+
+      setCrypto((prev: any) => ({
+        ...(prev || {}),
+        process: status,
+        session_scope: 'user',
+      }))
+
       await loadAll()
     } catch (e: any) {
       setError(e.message || 'Errore avvio live')
@@ -129,9 +170,18 @@ export default function DashboardPage() {
     setBusy(true)
     setError('')
     setMsg('')
+
     try {
-      await apiFetch('/api/user/microcap/stop', { method: 'POST' }, true)
+      const res = await apiFetch<any>('/api/user/microcap/stop', { method: 'POST' }, true)
+      const status = res?.status || res
+
       setMsg('Istanza personale fermata')
+      setCrypto((prev: any) => ({
+        ...(prev || {}),
+        process: status,
+        session_scope: 'user',
+      }))
+
       await loadAll()
     } catch (e: any) {
       setError(e.message || 'Errore stop sessione')
@@ -209,6 +259,8 @@ export default function DashboardPage() {
   const currentMode = crypto?.process?.mode || crypto?.public_mode || 'paper'
   const sessionScope = crypto?.session_scope || crypto?.process?.scope || 'public'
   const processRunning = !!crypto?.process?.running
+  const processError = shortError(crypto?.process?.last_error)
+  const processExitCode = crypto?.process?.exit_code
 
   return (
     <div className="shell section stack">
@@ -232,6 +284,7 @@ export default function DashboardPage() {
           <span>Modalità attuale: {currentMode}</span>
           <span>Session scope: {sessionScope}</span>
           <span>Motore attivo: {processRunning ? 'Sì' : 'No'}</span>
+          <span>Exit code: {processExitCode ?? 'N/D'}</span>
         </div>
 
         <div className="actions" style={{ marginTop: 16 }}>
@@ -253,6 +306,12 @@ export default function DashboardPage() {
             Ferma sessione personale
           </button>
         </div>
+
+        {processError ? (
+          <div className="bad" style={{ marginTop: 16 }}>
+            {processError}
+          </div>
+        ) : null}
       </div>
 
       <div className="card">
@@ -349,6 +408,7 @@ export default function DashboardPage() {
                 current_mode: currentMode,
                 session_scope: sessionScope,
                 process_running: processRunning,
+                process_exit_code: processExitCode,
               },
               null,
               2
