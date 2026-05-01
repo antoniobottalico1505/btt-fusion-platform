@@ -1,74 +1,162 @@
-let memoryToken = ''
+'use client'
 
-export function getToken(): string {
-  if (typeof window !== 'undefined') {
-    const stored = window.localStorage.getItem('access_token') || ''
-    if (stored) {
-      memoryToken = stored
-      return stored
-    }
-  }
-  return memoryToken
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { apiFetch, getToken } from '@/lib/api'
+
+type MeResponse = {
+  email_verified: boolean
+  accepted_terms_version: string
+  subscription_status: string
+  terms_ok?: boolean
 }
 
-export function setToken(token: string) {
-  memoryToken = token || ''
-  if (typeof window !== 'undefined') {
-    if (token) {
-      window.localStorage.setItem('access_token', token)
-    } else {
-      window.localStorage.removeItem('access_token')
-    }
-  }
-}
+export default function PricingPage() {
+  const router = useRouter()
+  const [me, setMe] = useState<MeResponse | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [msg, setMsg] = useState('')
 
-export function clearToken() {
-  setToken('')
-}
+  useEffect(() => {
+    const token = getToken()
+    if (!token) return
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  ''
+    apiFetch<MeResponse>('/api/auth/me', undefined, true)
+      .then(setMe)
+      .catch((e: any) => setError(e.message || 'Errore caricamento utente'))
+  }, [])
 
-export async function apiFetch<T = any>(
-  path: string,
-  init?: RequestInit,
-  auth: boolean = false
-): Promise<T> {
-  const headers = new Headers(init?.headers || {})
-  headers.set('Content-Type', 'application/json')
-
-  if (auth) {
+  async function ensureLoggedIn() {
     const token = getToken()
     if (!token) {
-      throw new Error('missing token')
+      router.push('/login')
+      return false
     }
-    headers.set('Authorization', `Bearer ${token}`)
+    return true
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-  })
+  async function acceptTerms() {
+    setBusy(true)
+    setError('')
+    setMsg('')
 
-  let data: any = null
-  const text = await res.text()
+    try {
+      const ok = await ensureLoggedIn()
+      if (!ok) return
 
-  try {
-    data = text ? JSON.parse(text) : null
-  } catch {
-    data = text
+      await apiFetch(
+        '/api/user/accept-terms',
+        {
+          method: 'POST',
+          body: JSON.stringify({ accepted: true }),
+        },
+        true
+      )
+
+      const fresh = await apiFetch<MeResponse>('/api/auth/me', undefined, true)
+      setMe(fresh)
+      setMsg('Termini accettati con successo')
+    } catch (e: any) {
+      if (String(e.message || '').toLowerCase().includes('missing token')) {
+        router.push('/login')
+        return
+      }
+      setError(e.message || 'Errore accettazione termini')
+    } finally {
+      setBusy(false)
+    }
   }
 
-  if (!res.ok) {
-    const detail =
-      (data && typeof data === 'object' && (data.detail || data.message)) ||
-      (typeof data === 'string' ? data : '') ||
-      `HTTP ${res.status}`
+  async function startCheckout(plan: string) {
+    setBusy(true)
+    setError('')
+    setMsg('')
 
-    throw new Error(String(detail))
+    try {
+      const ok = await ensureLoggedIn()
+      if (!ok) return
+
+      const fresh = await apiFetch<MeResponse>('/api/auth/me', undefined, true)
+      setMe(fresh)
+
+      if (!fresh.email_verified) {
+        setError('Verifica prima la tua email')
+        return
+      }
+
+      if (!fresh.terms_ok && !fresh.accepted_terms_version) {
+        setError('Devi prima accettare termini e policy')
+        return
+      }
+
+      const res = await apiFetch<{ url: string }>(
+        '/api/billing/checkout',
+        {
+          method: 'POST',
+          body: JSON.stringify({ plan }),
+        },
+        true
+      )
+
+      if (!res?.url) {
+        setError('Checkout non disponibile')
+        return
+      }
+
+      window.location.href = res.url
+    } catch (e: any) {
+      if (String(e.message || '').toLowerCase().includes('missing token')) {
+        router.push('/login')
+        return
+      }
+      setError(e.message || 'Errore avvio checkout')
+    } finally {
+      setBusy(false)
+    }
   }
 
-  return data as T
+  return (
+    <div className="shell section stack">
+      <div>
+        <h1 className="section-title">Accesso completo BTTcapital</h1>
+        <p className="section-sub">
+          Per attivare l’abbonamento devi essere loggato, email verificata e termini accettati.
+        </p>
+      </div>
+
+      {msg ? <div className="good">{msg}</div> : null}
+      {error ? <div className="bad">{error}</div> : null}
+
+      <div className="card stack">
+        <div className="muted">Email verificata: {me?.email_verified ? 'Sì' : 'No'}</div>
+        <div className="muted">
+          Termini accettati: {me?.terms_ok || me?.accepted_terms_version ? 'Sì' : 'No'}
+        </div>
+        <div className="muted">Abbonamento: {me?.subscription_status || 'inactive'}</div>
+      </div>
+
+      <div className="card stack">
+        <button onClick={acceptTerms} disabled={busy}>
+          Accetta termini e policy
+        </button>
+      </div>
+
+      <div className="grid-2">
+        <div className="card stack">
+          <h2 className="section-title">Mensile</h2>
+          <button onClick={() => startCheckout('monthly')} disabled={busy}>
+            Attiva abbonamento mensile
+          </button>
+        </div>
+
+        <div className="card stack">
+          <h2 className="section-title">Annuale</h2>
+          <button onClick={() => startCheckout('yearly')} disabled={busy}>
+            Attiva abbonamento annuale
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
