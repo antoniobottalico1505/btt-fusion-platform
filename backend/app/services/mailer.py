@@ -1,21 +1,40 @@
 import smtplib
+import ssl
 from email.mime.text import MIMEText
 
 from app.core.settings import get_settings
 
 settings = get_settings()
 
+
 def send_email(to_email: str, subject: str, html: str) -> None:
-    if not settings.SMTP_HOST or not settings.SMTP_FROM_EMAIL:
-        return
+    smtp_host = (settings.SMTP_HOST or "").strip()
+    smtp_user = (settings.SMTP_USER or "").strip()
+    smtp_password = settings.SMTP_PASSWORD or ""
+    smtp_from = ((settings.SMTP_FROM_EMAIL or "").strip() or smtp_user)
 
-    msg = MIMEText(html, 'html', 'utf-8')
-    msg['Subject'] = subject
-    msg['From'] = settings.SMTP_FROM_EMAIL
-    msg['To'] = to_email
+    if not smtp_host:
+        raise RuntimeError("SMTP_HOST mancante")
 
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-        server.starttls()
-        if settings.SMTP_USER:
-            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        server.sendmail(settings.SMTP_FROM_EMAIL, [to_email], msg.as_string())
+    if not smtp_from:
+        raise RuntimeError("SMTP_FROM_EMAIL o SMTP_USER mancante")
+
+    if smtp_user and not smtp_password:
+        raise RuntimeError("SMTP_PASSWORD mancante")
+
+    msg = MIMEText(html, "html", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = smtp_from
+    msg["To"] = to_email
+
+    context = ssl.create_default_context()
+
+    with smtplib.SMTP(smtp_host, settings.SMTP_PORT, timeout=30) as server:
+        server.ehlo()
+        server.starttls(context=context)
+        server.ehlo()
+
+        if smtp_user:
+            server.login(smtp_user, smtp_password)
+
+        server.sendmail(smtp_from, [to_email], msg.as_string())

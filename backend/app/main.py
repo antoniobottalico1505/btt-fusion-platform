@@ -470,21 +470,30 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    ensure_trial(user, db)
 
     verify_link = _public_url(f"/verify-email?token={verify_token}")
-    send_email(
-        user.email,
-        "Verifica il tuo account BTTcapital",
-        f"""
-        <h2>Benvenuto in BTTcapital</h2>
-        <p>Per attivare il tuo account, verifica la tua email:</p>
-        <p><a href="{verify_link}">{verify_link}</a></p>
-        """,
-    )
 
-    token = create_access_token(user.email, extra={"is_admin": user.is_admin})
-    return {"access_token": token, "token_type": "bearer"}
+    try:
+        send_email(
+            user.email,
+            "Verifica il tuo account BTTcapital",
+            f"""
+            <h2>Benvenuto in BTTcapital</h2>
+            <p>Per attivare il tuo account, verifica la tua email:</p>
+            <p><a href="{verify_link}">{verify_link}</a></p>
+            """,
+        )
+    except Exception as exc:
+        try:
+            db.delete(user)
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise HTTPException(status_code=500, detail=f"Invio email verifica fallito: {exc}")
+
+    return {
+        "message": "Account creato. Verifica la tua email prima di accedere."
+    }
 
 
 @app.post("/api/auth/login")
@@ -492,6 +501,9 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == payload.email.lower()))
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Credenziali non valide")
+
+    if not user.email_verified:
+        raise HTTPException(status_code=403, detail="Verifica prima la tua email")
 
     token = create_access_token(user.email, extra={"is_admin": user.is_admin})
     return {"access_token": token, "token_type": "bearer"}
@@ -698,15 +710,17 @@ def public_btt_latest(db: Session = Depends(get_db)):
 
 @app.post("/api/user/activate-trial")
 def activate_trial(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = ensure_trial(user, db)
-    return {"trial_started_at": user.trial_started_at, "trial_expires_at": user.trial_expires_at}
+    return {
+        "ok": True,
+        "message": "La trial è stata rimossa. L'accesso è illimitato dopo verifica email.",
+        "email_verified": bool(user.email_verified),
+    }
 
 
 @app.post("/api/user/btt/run")
 def user_btt_run(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = ensure_trial(user, db)
     if not has_access(user):
-        raise HTTPException(status_code=402, detail="Trial scaduto o abbonamento richiesto")
+        raise HTTPException(status_code=403, detail="Verifica prima la tua email per accedere")
 
     today = str(__import__("datetime").datetime.utcnow().date())
     n = db.scalar(
@@ -724,6 +738,7 @@ def user_btt_run(user: User = Depends(get_current_user), db: Session = Depends(g
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"BTT run bootstrap failed: {type(exc).__name__}: {exc}")
     return {"job_id": job.id, "status": job.status}
+
 
 @app.post("/api/billing/checkout")
 def billing_checkout(payload: StripeCheckoutIn, user: User = Depends(get_current_user)):

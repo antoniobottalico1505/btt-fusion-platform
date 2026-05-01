@@ -14,6 +14,10 @@ function signedPct(v: number) {
   return `${sign}${Math.abs(v).toFixed(2)}%`
 }
 
+function sanitizeBrand(value: unknown, fallback: string) {
+  return String(value || fallback).replace(/btt\s*fusion/gi, 'BTTcapital')
+}
+
 export default function HomePage() {
   const [site, setSite] = useState<any>(null)
   const [crypto, setCrypto] = useState<any>(null)
@@ -29,16 +33,19 @@ export default function HomePage() {
   const cryptoSummary = crypto?.dashboard?.summary || crypto?.summary || {}
   const stockLatest = stock?.latest || null
 
+  const heroTitle = sanitizeBrand(site?.copy?.hero_title, 'BTTcapital')
+  const heroSubtitle = sanitizeBrand(
+    site?.copy?.hero_subtitle,
+    'BTTcapital è una piattaforma privata di market intelligence che unisce BTTcrypto e BTTstock in un ambiente premium orientato a risultati aggregati, controllo del rischio e presentazione istituzionale.'
+  )
+
   return (
     <div className="shell">
       <section className="hero">
         <div className="panel hero-copy">
           <span className="eyebrow">Private analytics • hosted-only • no source access</span>
-          <h1 className="h1">{site?.copy?.hero_title || 'BTTcapital'}</h1>
-          <p className="lead">
-            {site?.copy?.hero_subtitle ||
-              'BTTcapital è una piattaforma privata di market intelligence che unisce BTTcrypto e BTTstock in un ambiente premium orientato a risultati aggregati, controllo del rischio e presentazione istituzionale.'}
-          </p>
+          <h1 className="h1">{heroTitle}</h1>
+          <p className="lead">{heroSubtitle}</p>
 
           <div className="actions">
             <Link href="/dashboard"><button>Apri dashboard</button></Link>
@@ -107,12 +114,12 @@ export default function HomePage() {
         <div className="card">
           <h3 className="section-title">Accesso unico</h3>
           <p className="section-sub">
-            Un solo abbonamento per tutto BTTcapital, mensile o annuale.
+            Accesso illimitato alla piattaforma dopo verifica email. Abbonamento dedicato alle funzioni premium/live.
           </p>
           <div className="stack muted">
-            <span>Mensile: €99</span>
-            <span>Annuale: €990</span>
-            <span>Accesso completo a BTTcrypto e BTTstock</span>
+            <span>Verifica email obbligatoria</span>
+            <span>Accesso piattaforma senza scadenza</span>
+            <span>Upgrade premium per funzioni avanzate/live</span>
           </div>
         </div>
       </section>
