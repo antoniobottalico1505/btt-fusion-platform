@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, getLocalVerifiedFlag } from '@/lib/api'
 import {
   LineChart,
   Line,
@@ -66,9 +66,11 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [localVerified, setLocalVerified] = useState(false)
 
   async function loadAll() {
     setError('')
+    setLocalVerified(getLocalVerifiedFlag())
 
     let meRes: any = null
     try {
@@ -87,14 +89,33 @@ export default function DashboardPage() {
         const cryptoRes = await apiFetch('/api/user/microcap/status', undefined, true)
         setCrypto(cryptoRes)
       } catch (e: any) {
-        setError(e.message || 'Errore caricamento sessione microcap')
+        const msgText = String(e.message || '')
+        if (
+          msgText.toLowerCase().includes('not found') ||
+          msgText.toLowerCase().includes('404')
+        ) {
+          try {
+            const fallbackCrypto = await apiFetch('/api/public/microcap')
+            setCrypto(fallbackCrypto)
+          } catch {
+            setCrypto(null)
+          }
+        } else {
+          setError(msgText || 'Errore caricamento sessione microcap')
+        }
       }
     } else {
       try {
         const fallbackCrypto = await apiFetch('/api/public/microcap')
         setCrypto(fallbackCrypto)
       } catch (e: any) {
-        setError(e.message || 'Errore caricamento BTTcrypto')
+        const msgText = String(e.message || '')
+        if (
+          !msgText.toLowerCase().includes('not found') &&
+          !msgText.toLowerCase().includes('404')
+        ) {
+          setError(msgText || 'Errore caricamento BTTcrypto')
+        }
       }
     }
 
@@ -130,7 +151,15 @@ export default function DashboardPage() {
 
       await loadAll()
     } catch (e: any) {
-      setError(e.message || 'Errore avvio paper')
+      const msgText = String(e.message || '')
+      if (
+        msgText.toLowerCase().includes('not found') ||
+        msgText.toLowerCase().includes('404')
+      ) {
+        setError('Controlli microcap personali non trovati sul backend attuale.')
+      } else {
+        setError(msgText || 'Errore avvio paper')
+      }
     } finally {
       setBusy(false)
     }
@@ -159,7 +188,15 @@ export default function DashboardPage() {
 
       await loadAll()
     } catch (e: any) {
-      setError(e.message || 'Errore avvio live')
+      const msgText = String(e.message || '')
+      if (
+        msgText.toLowerCase().includes('not found') ||
+        msgText.toLowerCase().includes('404')
+      ) {
+        setError('Controlli microcap live non trovati sul backend attuale.')
+      } else {
+        setError(msgText || 'Errore avvio live')
+      }
     } finally {
       setBusy(false)
     }
@@ -183,7 +220,15 @@ export default function DashboardPage() {
 
       await loadAll()
     } catch (e: any) {
-      setError(e.message || 'Errore stop sessione')
+      const msgText = String(e.message || '')
+      if (
+        msgText.toLowerCase().includes('not found') ||
+        msgText.toLowerCase().includes('404')
+      ) {
+        setError('Controllo stop microcap non trovato sul backend attuale.')
+      } else {
+        setError(msgText || 'Errore stop sessione')
+      }
     } finally {
       setBusy(false)
     }
@@ -253,7 +298,10 @@ export default function DashboardPage() {
     ? (positiveCombinedPoints / combinedChart.length) * 100
     : 0
 
-  const liveUnlocked = !!crypto?.live_unlocked
+  const effectiveVerified = !!me?.email_verified || localVerified
+  const liveUnlocked =
+    !!crypto?.live_unlocked ||
+    (effectiveVerified && String(me?.subscription_status || '') === 'active')
   const liveAvailable = !!crypto?.live_available
   const currentMode = crypto?.process?.mode || crypto?.public_mode || 'paper'
   const sessionScope = crypto?.session_scope || crypto?.process?.scope || 'public'
@@ -276,7 +324,7 @@ export default function DashboardPage() {
       <div className="card">
         <h2 className="section-title">Istanza personale microcap</h2>
         <div className="stack muted">
-          <span>Email verificata: {me?.email_verified ? 'Sì' : 'No'}</span>
+          <span>Email verificata: {effectiveVerified ? 'Sì' : 'No'}</span>
           <span>Abbonamento: {me?.subscription_status || 'inactive'}</span>
           <span>Live disponibile lato server: {liveAvailable ? 'Sì' : 'No'}</span>
           <span>Live sbloccato per questo account: {liveUnlocked ? 'Sì' : 'No'}</span>

@@ -26,6 +26,20 @@ export function clearToken() {
   setToken('')
 }
 
+export function getLocalVerifiedFlag(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem('btt_email_verified') === '1'
+}
+
+export function setLocalVerifiedFlag(value: boolean) {
+  if (typeof window === 'undefined') return
+  if (value) {
+    window.localStorage.setItem('btt_email_verified', '1')
+  } else {
+    window.localStorage.removeItem('btt_email_verified')
+  }
+}
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   'https://btt-fusion-backend.onrender.com'
@@ -49,6 +63,7 @@ export async function apiFetch<T = any>(
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
+    cache: 'no-store',
   })
 
   const raw = await res.text()

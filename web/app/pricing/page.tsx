@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { apiFetch, getToken } from '@/lib/api'
+import {
+  apiFetch,
+  getLocalVerifiedFlag,
+  getToken,
+  setLocalVerifiedFlag,
+} from '@/lib/api'
 
 type MeResponse = {
   email_verified: boolean
@@ -18,6 +23,7 @@ export default function PricingPage() {
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
   const [acceptChecked, setAcceptChecked] = useState(false)
+  const [localVerified, setLocalVerified] = useState(false)
 
   async function refreshMe() {
     const token = getToken()
@@ -29,12 +35,18 @@ export default function PricingPage() {
     try {
       const fresh = await apiFetch<MeResponse>('/api/auth/me', undefined, true)
       setMe(fresh)
+      if (fresh?.email_verified) {
+        setLocalVerifiedFlag(true)
+        setLocalVerified(true)
+      }
     } catch (e: any) {
-      setError(e.message || 'Errore caricamento utente')
+      setError((prev) => prev || e.message || 'Errore caricamento utente')
     }
   }
 
   useEffect(() => {
+    const lv = getLocalVerifiedFlag()
+    setLocalVerified(lv)
     refreshMe()
   }, [])
 
@@ -73,11 +85,16 @@ export default function PricingPage() {
       await refreshMe()
       setMsg('Termini accettati con successo')
     } catch (e: any) {
-      if (String(e.message || '').toLowerCase().includes('missing token')) {
+      const msgText = String(e.message || '')
+      if (msgText.toLowerCase().includes('missing token')) {
         router.push('/login')
         return
       }
-      setError(e.message || 'Errore accettazione termini')
+      if (msgText.toLowerCase().includes('not found')) {
+        setError('Endpoint termini non trovato sul backend. Devi ridistribuire il backend Render corretto.')
+        return
+      }
+      setError(msgText || 'Errore accettazione termini')
     } finally {
       setBusy(false)
     }
@@ -95,7 +112,13 @@ export default function PricingPage() {
       const fresh = await apiFetch<MeResponse>('/api/auth/me', undefined, true)
       setMe(fresh)
 
-      if (!fresh.email_verified) {
+      const verifiedNow = !!fresh.email_verified || localVerified
+      if (fresh?.email_verified) {
+        setLocalVerifiedFlag(true)
+        setLocalVerified(true)
+      }
+
+      if (!verifiedNow) {
         setError('La tua email non risulta ancora verificata')
         return
       }
@@ -121,15 +144,23 @@ export default function PricingPage() {
 
       window.location.href = res.url
     } catch (e: any) {
-      if (String(e.message || '').toLowerCase().includes('missing token')) {
+      const msgText = String(e.message || '')
+      if (msgText.toLowerCase().includes('missing token')) {
         router.push('/login')
         return
       }
-      setError(e.message || 'Errore avvio checkout')
+      if (msgText.toLowerCase().includes('not found')) {
+        setError('Endpoint abbonamenti non trovato sul backend. Devi ridistribuire il backend Render corretto.')
+        return
+      }
+      setError(msgText || 'Errore avvio checkout')
     } finally {
       setBusy(false)
     }
   }
+
+  const effectiveVerified = !!me?.email_verified || localVerified
+  const effectiveTerms = !!me?.terms_ok || !!me?.accepted_terms_version
 
   return (
     <div className="shell section stack">
@@ -144,10 +175,8 @@ export default function PricingPage() {
       {error ? <div className="bad">{error}</div> : null}
 
       <div className="card stack">
-        <div className="muted">Email verificata: {me?.email_verified ? 'Sì' : 'No'}</div>
-        <div className="muted">
-          Termini accettati: {me?.terms_ok || me?.accepted_terms_version ? 'Sì' : 'No'}
-        </div>
+        <div className="muted">Email verificata: {effectiveVerified ? 'Sì' : 'No'}</div>
+        <div className="muted">Termini accettati: {effectiveTerms ? 'Sì' : 'No'}</div>
         <div className="muted">Abbonamento: {me?.subscription_status || 'inactive'}</div>
       </div>
 
@@ -169,20 +198,14 @@ export default function PricingPage() {
       <div className="grid-2">
         <div className="card stack">
           <h2 className="section-title">Mensile</h2>
-          <button
-            onClick={() => startCheckout('monthly')}
-            disabled={busy || !me?.email_verified}
-          >
+          <button onClick={() => startCheckout('monthly')} disabled={busy}>
             Attiva abbonamento mensile
           </button>
         </div>
 
         <div className="card stack">
           <h2 className="section-title">Annuale</h2>
-          <button
-            onClick={() => startCheckout('yearly')}
-            disabled={busy || !me?.email_verified}
-          >
+          <button onClick={() => startCheckout('yearly')} disabled={busy}>
             Attiva abbonamento annuale
           </button>
         </div>

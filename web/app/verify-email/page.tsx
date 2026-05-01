@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, setLocalVerifiedFlag } from '@/lib/api'
 
 export default function VerifyEmailPage() {
   const [loading, setLoading] = useState(true)
@@ -30,6 +30,7 @@ export default function VerifyEmailPage() {
       `/api/auth/verify-email?token=${encodeURIComponent(token)}`
     )
       .then((res) => {
+        setLocalVerifiedFlag(true)
         setSuccess(true)
         setMessage(
           res?.message ||
