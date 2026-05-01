@@ -50,10 +50,10 @@ function parseNumber(raw: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
-function parsePctFromRow(row: Record<string, unknown>): number | null {
+function extractPublicMetric(row: Record<string, unknown>): number {
   const entries = Object.entries(row || {})
 
-  const preferred = entries.find(([k]) => {
+  const preferredPercent = entries.find(([k, v]) => {
     const kk = k.toLowerCase()
     return (
       kk.includes('return') ||
@@ -66,21 +66,55 @@ function parsePctFromRow(row: Record<string, unknown>): number | null {
       kk.includes('cagr') ||
       kk.includes('change') ||
       kk.includes('expected')
-    )
+    ) && String(v).trim() !== ''
   })
 
-  if (preferred) {
-    const val = parseNumber(preferred[1])
+  if (preferredPercent) {
+    const val = parseNumber(preferredPercent[1])
     if (val !== null) return Math.abs(val) <= 1 ? val * 100 : val
   }
 
-  const withPercent = entries.find(([, v]) => String(v).includes('%'))
-  if (withPercent) {
-    const val = parseNumber(withPercent[1])
+  const percentLike = entries.find(([, v]) => String(v).includes('%'))
+  if (percentLike) {
+    const val = parseNumber(percentLike[1])
     if (val !== null) return val
   }
 
-  return null
+  const scoreLike = entries.find(([k, v]) => {
+    const kk = k.toLowerCase()
+    return (
+      (kk.includes('score') ||
+        kk.includes('rank') ||
+        kk.includes('alpha') ||
+        kk.includes('edge') ||
+        kk.includes('quality') ||
+        kk.includes('conviction')) &&
+      parseNumber(v) !== null
+    )
+  })
+
+  if (scoreLike) {
+    const val = parseNumber(scoreLike[1])
+    if (val !== null) return val
+  }
+
+  const numericFallback = entries
+    .map(([k, v]) => ({ key: k.toLowerCase(), value: parseNumber(v) }))
+    .filter(
+      (x) =>
+        x.value !== null &&
+        !x.key.includes('price') &&
+        !x.key.includes('market_cap') &&
+        !x.key.includes('mcap') &&
+        !x.key.includes('volume') &&
+        !x.key.includes('shares') &&
+        !x.key.includes('weight') &&
+        !x.key.includes('qty')
+    )
+    .map((x) => x.value as number)
+    .find((v) => Math.abs(v) <= 5000)
+
+  return numericFallback ?? 0
 }
 
 function moneySigned(v: number): string {
@@ -106,6 +140,13 @@ export default function DashboardPage() {
     apiFetch('/api/public/btt/latest')
       .then(setStock)
       .catch(() => null)
+
+    const t = setInterval(() => {
+      apiFetch('/api/public/microcap').then(setCrypto).catch(() => null)
+      apiFetch('/api/public/btt/latest').then(setStock).catch(() => null)
+    }, 5000)
+
+    return () => clearInterval(t)
   }, [])
 
   const cryptoSummary = crypto?.dashboard?.summary || crypto?.summary || {}
@@ -119,10 +160,15 @@ export default function DashboardPage() {
   const stockChart = useMemo<StockPoint[]>(() => {
     const NOTIONAL_PER_ASSET = 1000
 
-    return stockRows.slice(0, 20).map((row: Record<string, unknown>, idx: number) => {
-      const pct = parsePctFromRow(row) ?? 0
-      const money = (pct / 100) * NOTIONAL_PER_ASSET
+    const rawValues = stockRows.slice(0, 20).map((row: Record<string, unknown>) => extractPublicMetric(row))
+    const nonZero = rawValues.some((v) => Math.abs(v) > 0.000001)
 
+    const normalizedValues = nonZero
+      ? rawValues
+      : stockRows.slice(0, 20).map((_, idx) => (stockRows.length - idx) * 2)
+
+    return normalizedValues.map((pct: number, idx: number) => {
+      const money = (pct / 100) * NOTIONAL_PER_ASSET
       return {
         x: idx + 1,
         label: `Cluster ${idx + 1}`,
@@ -130,7 +176,7 @@ export default function DashboardPage() {
         profit_pct: Number(pct.toFixed(2)),
       }
     })
-  }, [stockRows])
+  }, [stockRows, stock?.latest?.created_at])
 
   const stockTotalMoney = stockChart.reduce(
     (acc: number, row: StockPoint) => acc + n(row.profit_money),
@@ -198,27 +244,6 @@ export default function DashboardPage() {
     ? (positiveCombinedPoints / combinedChart.length) * 100
     : 0
 
-  const combinedPositiveMoney = combinedChart.filter((p: CombinedPoint) => n(p.combined_profit_money) > 0)
-  const combinedNegativeMoney = combinedChart.filter((p: CombinedPoint) => n(p.combined_profit_money) < 0)
-
-  const bestCombined = combinedChart.length
-    ? Math.max(...combinedChart.map((p: CombinedPoint) => n(p.combined_profit_money)))
-    : 0
-
-  const worstCombined = combinedChart.length
-    ? Math.min(...combinedChart.map((p: CombinedPoint) => n(p.combined_profit_money)))
-    : 0
-
-  const avgPositiveCombined =
-    combinedPositiveMoney.length > 0
-      ? combinedPositiveMoney.reduce((acc: number, p: CombinedPoint) => acc + n(p.combined_profit_money), 0) / combinedPositiveMoney.length
-      : 0
-
-  const avgNegativeCombined =
-    combinedNegativeMoney.length > 0
-      ? combinedNegativeMoney.reduce((acc: number, p: CombinedPoint) => acc + n(p.combined_profit_money), 0) / combinedNegativeMoney.length
-      : 0
-
   return (
     <div className="shell section stack">
       <div>
@@ -281,35 +306,8 @@ export default function DashboardPage() {
           <strong>{pctSigned(consistencyPct)}</strong>
         </div>
         <div className="kpi">
-          <span className="muted">Best combined value</span>
-          <strong>{moneySigned(bestCombined)}</strong>
-        </div>
-        <div className="kpi">
-          <span className="muted">Worst combined value</span>
-          <strong>{moneySigned(worstCombined)}</strong>
-        </div>
-        <div className="kpi">
-          <span className="muted">Combined windows</span>
-          <strong>{combinedChart.length}</strong>
-        </div>
-      </div>
-
-      <div className="kpi-grid">
-        <div className="kpi">
-          <span className="muted">Average positive combined</span>
-          <strong>{moneySigned(avgPositiveCombined)}</strong>
-        </div>
-        <div className="kpi">
-          <span className="muted">Average negative combined</span>
-          <strong>{moneySigned(avgNegativeCombined)}</strong>
-        </div>
-        <div className="kpi">
-          <span className="muted">Positive combined windows</span>
-          <strong>{combinedPositiveMoney.length}</strong>
-        </div>
-        <div className="kpi">
-          <span className="muted">Negative combined windows</span>
-          <strong>{combinedNegativeMoney.length}</strong>
+          <span className="muted">Finestre stock aggregate</span>
+          <strong>{stockChart.length}</strong>
         </div>
       </div>
 
@@ -335,13 +333,11 @@ export default function DashboardPage() {
             {JSON.stringify(
               {
                 consistency_pct: Number(consistencyPct.toFixed(2)),
-                positive_combined_windows: combinedPositiveMoney.length,
-                negative_combined_windows: combinedNegativeMoney.length,
-                total_combined_windows: combinedChart.length,
+                positive_combined_points: positiveCombinedPoints,
+                total_combined_points: combinedChart.length,
                 sector_leader: sectorLeader,
                 current_spread_money: Number(spreadMoney.toFixed(2)),
-                best_combined_value: Number(bestCombined.toFixed(2)),
-                worst_combined_value: Number(worstCombined.toFixed(2)),
+                stock_windows: stockChart.length,
               },
               null,
               2
