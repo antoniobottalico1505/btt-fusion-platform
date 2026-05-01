@@ -58,11 +58,14 @@ function parsePctFromRow(row: Record<string, unknown>): number | null {
     return (
       kk.includes('return') ||
       kk.includes('perf') ||
+      kk.includes('performance') ||
       kk.includes('upside') ||
       kk.includes('gain') ||
       kk.includes('profit') ||
       kk.includes('yield') ||
-      kk.includes('cagr')
+      kk.includes('cagr') ||
+      kk.includes('change') ||
+      kk.includes('expected')
     )
   })
 
@@ -109,9 +112,9 @@ export default function DashboardPage() {
   const cryptoChart = cryptoSummary?.chart || []
 
   const stockRows: Record<string, unknown>[] =
-    stock?.latest?.summary?.portfolio_rows?.length
-      ? stock?.latest?.summary?.portfolio_rows
-      : stock?.latest?.summary?.top_rows || []
+    stock?.latest?.summary?.top_rows?.length
+      ? stock?.latest?.summary?.top_rows
+      : stock?.latest?.summary?.portfolio_rows || []
 
   const stockChart = useMemo<StockPoint[]>(() => {
     const NOTIONAL_PER_ASSET = 1000
@@ -122,7 +125,7 @@ export default function DashboardPage() {
 
       return {
         x: idx + 1,
-        label: String(row?.ticker || row?.symbol || row?.name || `Asset ${idx + 1}`),
+        label: `Cluster ${idx + 1}`,
         profit_money: Number(money.toFixed(2)),
         profit_pct: Number(pct.toFixed(2)),
       }
@@ -195,16 +198,44 @@ export default function DashboardPage() {
     ? (positiveCombinedPoints / combinedChart.length) * 100
     : 0
 
+  const combinedPositiveMoney = combinedChart.filter((p: CombinedPoint) => n(p.combined_profit_money) > 0)
+  const combinedNegativeMoney = combinedChart.filter((p: CombinedPoint) => n(p.combined_profit_money) < 0)
+
+  const bestCombined = combinedChart.length
+    ? Math.max(...combinedChart.map((p: CombinedPoint) => n(p.combined_profit_money)))
+    : 0
+
+  const worstCombined = combinedChart.length
+    ? Math.min(...combinedChart.map((p: CombinedPoint) => n(p.combined_profit_money)))
+    : 0
+
+  const avgPositiveCombined =
+    combinedPositiveMoney.length > 0
+      ? combinedPositiveMoney.reduce((acc: number, p: CombinedPoint) => acc + n(p.combined_profit_money), 0) / combinedPositiveMoney.length
+      : 0
+
+  const avgNegativeCombined =
+    combinedNegativeMoney.length > 0
+      ? combinedNegativeMoney.reduce((acc: number, p: CombinedPoint) => acc + n(p.combined_profit_money), 0) / combinedNegativeMoney.length
+      : 0
+
   return (
     <div className="shell section stack">
       <div>
         <h1 className="section-title">Dashboard BTTcapital</h1>
         <p className="section-sub">
-          Vista media aggregata di BTTcrypto e BTTstock con dati coerenti con i risultati reali disponibili.
+          Vista media aggregata di BTTcrypto e BTTstock senza esposizione pubblica di token, stock, ticker o numeri asset-level.
         </p>
       </div>
 
       {error ? <div className="bad">{error}</div> : null}
+
+      <div className="card">
+        <h2 className="section-title">Base temporale dei risultati</h2>
+        <p className="section-sub">
+          I risultati pubblici mostrati in dashboard partono dal <strong>29 aprile 2016 alle 9.30 p.m.</strong>
+        </p>
+      </div>
 
       <div className="kpi-grid">
         <div className="kpi">
@@ -244,6 +275,44 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      <div className="kpi-grid">
+        <div className="kpi">
+          <span className="muted">Consistency rate</span>
+          <strong>{pctSigned(consistencyPct)}</strong>
+        </div>
+        <div className="kpi">
+          <span className="muted">Best combined value</span>
+          <strong>{moneySigned(bestCombined)}</strong>
+        </div>
+        <div className="kpi">
+          <span className="muted">Worst combined value</span>
+          <strong>{moneySigned(worstCombined)}</strong>
+        </div>
+        <div className="kpi">
+          <span className="muted">Combined windows</span>
+          <strong>{combinedChart.length}</strong>
+        </div>
+      </div>
+
+      <div className="kpi-grid">
+        <div className="kpi">
+          <span className="muted">Average positive combined</span>
+          <strong>{moneySigned(avgPositiveCombined)}</strong>
+        </div>
+        <div className="kpi">
+          <span className="muted">Average negative combined</span>
+          <strong>{moneySigned(avgNegativeCombined)}</strong>
+        </div>
+        <div className="kpi">
+          <span className="muted">Positive combined windows</span>
+          <strong>{combinedPositiveMoney.length}</strong>
+        </div>
+        <div className="kpi">
+          <span className="muted">Negative combined windows</span>
+          <strong>{combinedNegativeMoney.length}</strong>
+        </div>
+      </div>
+
       <div className="card">
         <h2 className="section-title">Media grafica BTTcrypto + BTTstock</h2>
         <div style={{ width: '100%', height: 360 }}>
@@ -266,10 +335,13 @@ export default function DashboardPage() {
             {JSON.stringify(
               {
                 consistency_pct: Number(consistencyPct.toFixed(2)),
-                positive_combined_points: positiveCombinedPoints,
-                total_combined_points: combinedChart.length,
+                positive_combined_windows: combinedPositiveMoney.length,
+                negative_combined_windows: combinedNegativeMoney.length,
+                total_combined_windows: combinedChart.length,
                 sector_leader: sectorLeader,
                 current_spread_money: Number(spreadMoney.toFixed(2)),
+                best_combined_value: Number(bestCombined.toFixed(2)),
+                worst_combined_value: Number(worstCombined.toFixed(2)),
               },
               null,
               2
@@ -278,17 +350,12 @@ export default function DashboardPage() {
         </div>
 
         <div className="card">
-          <h2 className="section-title">Confronto settoriale diretto</h2>
-          <div style={{ width: '100%', height: 320 }}>
-            <ResponsiveContainer>
-              <LineChart data={combinedChart}>
-                <XAxis dataKey="x" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="crypto_profit_money" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="stock_profit_money" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+          <h2 className="section-title">Policy di esposizione pubblica</h2>
+          <div className="stack muted">
+            <span>Nessun nome token pubblico.</span>
+            <span>Nessun nome stock pubblico.</span>
+            <span>Nessuna tabella asset-level pubblica.</span>
+            <span>Solo risultati, percentuali, valori aggregati e sintesi premium.</span>
           </div>
         </div>
       </div>

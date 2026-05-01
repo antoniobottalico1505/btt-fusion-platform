@@ -129,7 +129,7 @@ export default function BTTstockPage() {
 
       return {
         x: idx + 1,
-        label: row?.ticker || row?.symbol || row?.name || `Asset ${idx + 1}`,
+        label: `Cluster ${idx + 1}`,
         profit_pct: Number(pct.toFixed(2)),
         profit_money: Number(money.toFixed(2)),
       }
@@ -148,6 +148,23 @@ export default function BTTstockPage() {
     const losses = chart.filter((x: StockChartPoint) => x.profit_pct < 0).length
     const last = chart.length ? chart[chart.length - 1] : { profit_money: 0, profit_pct: 0 }
 
+    const bestPct = chart.length ? Math.max(...chart.map((x: StockChartPoint) => x.profit_pct)) : 0
+    const worstPct = chart.length ? Math.min(...chart.map((x: StockChartPoint) => x.profit_pct)) : 0
+    const bestMoney = chart.length ? Math.max(...chart.map((x: StockChartPoint) => x.profit_money)) : 0
+    const worstMoney = chart.length ? Math.min(...chart.map((x: StockChartPoint) => x.profit_money)) : 0
+
+    const positiveRatio = chart.length ? (wins / chart.length) * 100 : 0
+    const negativeRatio = chart.length ? (losses / chart.length) * 100 : 0
+
+    const volatilityBand = chart.length
+      ? Math.sqrt(
+          chart.reduce((acc: number, row: StockChartPoint) => {
+            const d = row.profit_pct - avgPct
+            return acc + d * d
+          }, 0) / chart.length
+        )
+      : 0
+
     return {
       totalMoney: Number(totalMoney.toFixed(2)),
       avgPct: Number(avgPct.toFixed(2)),
@@ -155,6 +172,13 @@ export default function BTTstockPage() {
       losses,
       lastMoney: Number(last.profit_money.toFixed(2)),
       lastPct: Number(last.profit_pct.toFixed(2)),
+      bestPct: Number(bestPct.toFixed(2)),
+      worstPct: Number(worstPct.toFixed(2)),
+      bestMoney: Number(bestMoney.toFixed(2)),
+      worstMoney: Number(worstMoney.toFixed(2)),
+      positiveRatio: Number(positiveRatio.toFixed(2)),
+      negativeRatio: Number(negativeRatio.toFixed(2)),
+      volatilityBand: Number(volatilityBand.toFixed(2)),
       chart,
     }
   }, [performanceRows])
@@ -165,7 +189,7 @@ export default function BTTstockPage() {
         <div>
           <h1 className="section-title">BTTstock</h1>
           <p className="section-sub">
-            Analisi azionaria server-side con ranking, rendimento aggregato e presentazione premium.
+            Vista pubblica aggregata senza esposizione di stock, ticker o numeri asset-specifici.
           </p>
         </div>
         <button onClick={run}>Avvia analisi BTTstock</button>
@@ -173,6 +197,13 @@ export default function BTTstockPage() {
 
       {msg ? <div className="good">{msg}</div> : null}
       {err ? <div className="bad">{err}</div> : null}
+
+      <div className="card">
+        <h2 className="section-title">Base temporale dei risultati</h2>
+        <p className="section-sub">
+          I risultati pubblici mostrati in questa sezione partono dal <strong>29 aprile 2016 alle 9.30 p.m.</strong>
+        </p>
+      </div>
 
       <div className="card">
         <h2 className="section-title">Stato elaborazione</h2>
@@ -199,7 +230,7 @@ export default function BTTstockPage() {
             <strong>{signedMoney(stockMetrics.totalMoney)}</strong>
           </div>
           <div className="kpi">
-            <span className="muted">Profitto / Perdita ultima voce</span>
+            <span className="muted">Profitto / Perdita ultima finestra</span>
             <strong>{signedMoney(stockMetrics.lastMoney)}</strong>
           </div>
           <div className="kpi">
@@ -207,12 +238,39 @@ export default function BTTstockPage() {
             <strong>{signedPct(stockMetrics.avgPct)}</strong>
           </div>
           <div className="kpi">
-            <span className="muted">Rendimento ultima voce</span>
+            <span className="muted">Rendimento ultima finestra</span>
             <strong>{signedPct(stockMetrics.lastPct)}</strong>
           </div>
         </div>
 
-        <div className="kpi-grid">
+        <div className="kpi-grid" style={{ marginTop: 14 }}>
+          <div className="kpi">
+            <span className="muted">Quota positiva</span>
+            <strong>{signedPct(stockMetrics.positiveRatio)}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Quota negativa</span>
+            <strong>{signedPct(stockMetrics.negativeRatio)}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Best range %</span>
+            <strong>{signedPct(stockMetrics.bestPct)}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Worst range %</span>
+            <strong>{signedPct(stockMetrics.worstPct)}</strong>
+          </div>
+        </div>
+
+        <div className="kpi-grid" style={{ marginTop: 14 }}>
+          <div className="kpi">
+            <span className="muted">Best range $</span>
+            <strong>{signedMoney(stockMetrics.bestMoney)}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Worst range $</span>
+            <strong>{signedMoney(stockMetrics.worstMoney)}</strong>
+          </div>
           <div className="kpi">
             <span className="muted">Titoli positivi</span>
             <strong>{stockMetrics.wins}</strong>
@@ -223,10 +281,21 @@ export default function BTTstockPage() {
           </div>
         </div>
 
+        <div className="kpi-grid" style={{ marginTop: 14 }}>
+          <div className="kpi">
+            <span className="muted">Volatility band %</span>
+            <strong>{signedPct(stockMetrics.volatilityBand)}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Finestre aggregate</span>
+            <strong>{stockMetrics.chart.length}</strong>
+          </div>
+        </div>
+
         <div style={{ width: '100%', height: 340, marginTop: 16 }}>
           <ResponsiveContainer>
             <LineChart data={stockMetrics.chart}>
-              <XAxis dataKey="label" />
+              <XAxis dataKey="x" />
               <YAxis />
               <Tooltip />
               <Line type="monotone" dataKey="profit_money" strokeWidth={2} dot={false} />
@@ -238,66 +307,22 @@ export default function BTTstockPage() {
 
       <div className="grid-2">
         <div className="card">
-          <h2 className="section-title">Titoli migliori</h2>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  {topRows[0] ? (
-                    Object.keys(topRows[0]).map((k) => <th key={k}>{k}</th>)
-                  ) : (
-                    <th>Nessun dato</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {topRows.length === 0 ? (
-                  <tr>
-                    <td>Nessun dato</td>
-                  </tr>
-                ) : (
-                  topRows.map((row: any, idx: number) => (
-                    <tr key={idx}>
-                      {Object.keys(topRows[0] || {}).map((k) => (
-                        <td key={k}>{String(row[k] ?? '')}</td>
-                      ))}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <h2 className="section-title">Policy di visualizzazione</h2>
+          <div className="stack muted">
+            <span>Nessun ticker mostrato pubblicamente.</span>
+            <span>Nessun nome stock mostrato pubblicamente.</span>
+            <span>Nessun valore per singolo asset mostrato pubblicamente.</span>
+            <span>Output limitato a range, percentuali, cluster e risultati aggregati.</span>
           </div>
         </div>
 
         <div className="card">
-          <h2 className="section-title">Portafoglio suggerito</h2>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  {portfolioRows[0] ? (
-                    Object.keys(portfolioRows[0]).map((k) => <th key={k}>{k}</th>)
-                  ) : (
-                    <th>Nessun dato</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {portfolioRows.length === 0 ? (
-                  <tr>
-                    <td>Nessun dato</td>
-                  </tr>
-                ) : (
-                  portfolioRows.map((row: any, idx: number) => (
-                    <tr key={idx}>
-                      {Object.keys(portfolioRows[0] || {}).map((k) => (
-                        <td key={k}>{String(row[k] ?? '')}</td>
-                      ))}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <h2 className="section-title">Struttura pubblica</h2>
+          <div className="stack muted">
+            <span>Visualizzazione premium e istituzionale.</span>
+            <span>Metriche aggregate, non lista asset-level.</span>
+            <span>Compatibile con una presentazione partner-ready e white-label.</span>
+            <span>Algoritmo e selezione proprietaria non esposti.</span>
           </div>
         </div>
       </div>

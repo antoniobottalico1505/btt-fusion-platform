@@ -70,28 +70,37 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="section">
+        <div className="card">
+          <h2 className="section-title">Track record pubblico</h2>
+          <p className="section-sub">
+            I risultati pubblici mostrati nel sito partono dal <strong>29 aprile 2016 alle 9.30 p.m.</strong>
+          </p>
+        </div>
+      </section>
+
       <section className="section grid-3">
         <div className="card">
           <h3 className="section-title">BTTcrypto</h3>
           <p className="section-sub">
-            Motore crypto osservabile tramite risultati aggregati, metriche reali e storico operativo.
+            Motore crypto osservabile esclusivamente tramite risultati aggregati e reporting sintetico.
           </p>
           <div className="stack muted">
-            <span>Performance aggregate</span>
-            <span>Cash, rendimento, win/loss, andamento</span>
-            <span>Nessun token pubblico in chiaro in homepage</span>
+            <span>Profitto/perdita totale e ultima operazione</span>
+            <span>Rendimento totale e ultimo rendimento</span>
+            <span>Win rate, drawdown, efficienza operativa</span>
           </div>
         </div>
 
         <div className="card">
           <h3 className="section-title">BTTstock</h3>
           <p className="section-sub">
-            Motore stock server-side con ranking, reportistica e resa “institutional style”.
+            Motore stock server-side con performance aggregate e presentazione premium senza esposizione asset-level.
           </p>
           <div className="stack muted">
-            <span>Top opportunities aggregate</span>
-            <span>Grafico performance e portafoglio suggerito</span>
-            <span>Output pubblico senza esposizione completa del motore</span>
+            <span>Performance media aggregata</span>
+            <span>Distribuzione risultati, best/worst range, hit rate</span>
+            <span>Visualizzazione istituzionale senza ticker pubblici</span>
           </div>
         </div>
 
@@ -110,23 +119,30 @@ export default function HomePage() {
 
       <section className="section grid-2">
         <div className="card">
-          <h2 className="section-title">Perché il prodotto è diverso</h2>
+          <h2 className="section-title">Struttura privata</h2>
           <div className="stack muted">
             <span>Hosted-only: il motore resta privato e non distribuito.</span>
-            <span>Output pubblici aggregati, non esposizione del codice o della logica proprietaria.</span>
-            <span>Impostazione “fund-tech” / decision-intelligence, non dashboard amatoriale.</span>
-            <span>Metriche pubbliche focalizzate su equity, rendimento, drawdown e qualità dei risultati.</span>
+            <span>Nessun accesso pubblico a codice, logica proprietaria o infrastruttura.</span>
+            <span>Risultati e metriche aggregate come interfaccia esterna.</span>
           </div>
         </div>
 
         <div className="card">
-          <h2 className="section-title">Struttura partner-ready</h2>
+          <h2 className="section-title">Posizionamento premium</h2>
           <div className="stack muted">
-            <span>BTTcapital può operare come piattaforma privata per partner autorizzati.</span>
-            <span>Tu mantieni algoritmo, infrastruttura, API e proprietà intellettuale.</span>
-            <span>Il partner può usare dashboard, risultati aggregati e interfaccia senza toccare il motore.</span>
-            <span>Approccio adatto a licensing, recurring B2B e strutture white-label.</span>
+            <span>Design e copy orientati a una percezione fund-tech / institutional style.</span>
+            <span>Output pubblico focalizzato su risultati, percentuali, qualità operativa e rischio.</span>
+            <span>Nessuna esposizione diretta di token, stock, ticker o numeri asset-specifici.</span>
           </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="card">
+          <h2 className="section-title">Ultimo stato BTTstock</h2>
+          <p className="section-sub">
+            {stockLatest ? `Ultimo report disponibile: ${stockLatest.status}` : 'Nessun report disponibile'}
+          </p>
         </div>
       </section>
     </div>
