@@ -39,8 +39,8 @@ class Settings(BaseSettings):
 
     EXTERNAL_MICROCAP_API_KEY: str = ""
     EXTERNAL_MICROCAP_TTL_SEC: int = 90
-    TERMS_VERSION: str = "2026-04"
 
+    TERMS_VERSION: str = "2026-04"
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

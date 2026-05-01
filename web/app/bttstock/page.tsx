@@ -118,8 +118,6 @@ export default function BTTstockPage() {
   const latest = data?.latest
   const topRows = latest?.summary?.top_rows || []
   const portfolioRows = latest?.summary?.portfolio_rows || []
-
-  // Per le performance usiamo PRIMA topRows.
   const performanceRows = topRows.length ? topRows : portfolioRows
 
   const stockMetrics = useMemo(() => {
@@ -167,7 +165,7 @@ export default function BTTstockPage() {
         <div>
           <h1 className="section-title">BTTstock</h1>
           <p className="section-sub">
-            Analisi azionaria server-side con ranking, rendimento potenziale e risultati consultabili.
+            Analisi azionaria server-side con ranking, rendimento aggregato e presentazione premium.
           </p>
         </div>
         <button onClick={run}>Avvia analisi BTTstock</button>

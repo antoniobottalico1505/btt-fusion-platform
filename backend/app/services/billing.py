@@ -25,7 +25,7 @@ def price_for_plan(plan: str) -> str:
     mapping = {
         "monthly": settings.STRIPE_PRICE_MONTHLY,
         "yearly": settings.STRIPE_PRICE_YEARLY,
-        # alias di compatibilità con eventuale codice vecchio
+        # alias di compatibilità
         "bundle_monthly": settings.STRIPE_PRICE_MONTHLY,
         "bundle_yearly": settings.STRIPE_PRICE_YEARLY,
     }

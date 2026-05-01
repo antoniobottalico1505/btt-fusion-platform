@@ -50,9 +50,9 @@ export default function PricingPage() {
   return (
     <div className="shell section stack">
       <div>
-        <h1 className="section-title">Abbonamento BTTcapital</h1>
+        <h1 className="section-title">Accesso BTTcapital</h1>
         <p className="section-sub">
-          Un solo accesso completo a BTTcrypto e BTTstock, in mensile o annuale.
+          Un solo accesso premium a BTTcrypto e BTTstock, in formula mensile o annuale.
         </p>
       </div>
 
@@ -77,18 +77,32 @@ export default function PricingPage() {
       <div className="grid-2">
         <div className="card stack">
           <h2 className="section-title">BTTcapital Mensile</h2>
-          <p>Accesso completo a BTTcrypto e BTTstock.</p>
+          <p>
+            Accesso completo alla piattaforma privata, alle performance aggregate, alle dashboard e ai moduli BTTcrypto + BTTstock.
+          </p>
           <p className="lead">€99 / mese</p>
           <button onClick={() => checkout('monthly')}>Checkout mensile</button>
         </div>
 
         <div className="card stack">
           <h2 className="section-title">BTTcapital Annuale</h2>
-          <p>Accesso completo a BTTcrypto e BTTstock con risparmio annuale.</p>
+          <p>
+            Accesso completo con struttura annuale ottimizzata per utilizzo continuativo e monitoraggio di lungo periodo.
+          </p>
           <p className="lead">€990 / anno</p>
           <button className="secondary" onClick={() => checkout('yearly')}>
             Checkout annuale
           </button>
+        </div>
+      </div>
+
+      <div className="card stack">
+        <h2 className="section-title">Cosa include</h2>
+        <div className="stack muted">
+          <span>BTTcrypto con risultati aggregati reali, storico e metriche di qualità.</span>
+          <span>BTTstock con ranking, performance aggregate e visualizzazione istituzionale.</span>
+          <span>Dashboard combinata con media dei due settori e parametri aggiuntivi.</span>
+          <span>Nessuna distribuzione del motore, del codice o della logica proprietaria.</span>
         </div>
       </div>
     </div>
