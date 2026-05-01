@@ -2,17 +2,22 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 
 export default function VerifyEmailPage() {
-  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [success, setSuccess] = useState(false)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    const token = searchParams.get('token')
+    let token = ''
+
+    try {
+      const params = new URLSearchParams(window.location.search)
+      token = params.get('token') || ''
+    } catch {
+      token = ''
+    }
 
     if (!token) {
       setLoading(false)
@@ -28,7 +33,7 @@ export default function VerifyEmailPage() {
         setSuccess(true)
         setMessage(
           res?.message ||
-            'Email verificata con successo. Da ora puoi entrare sempre senza ripetere la verifica.'
+            'Email verificata con successo. Da ora puoi entrare sempre senza rifare la verifica.'
         )
       })
       .catch((e: any) => {
@@ -38,7 +43,7 @@ export default function VerifyEmailPage() {
       .finally(() => {
         setLoading(false)
       })
-  }, [searchParams])
+  }, [])
 
   return (
     <div className="auth-card panel">
