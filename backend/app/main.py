@@ -154,56 +154,224 @@ def _build_crypto_summary(dashboard: dict) -> dict:
     }
 
 
+def _stock_parse_num(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        try:
+            return float(raw)
+        except Exception:
+            return None
+
+    s = str(raw).strip()
+    if not s:
+        return None
+
+    s = s.replace("€", "").replace("$", "").replace(" ", "").replace(",", ".")
+    if s.endswith("%"):
+        s = s[:-1]
+
+    try:
+        return float(s)
+    except Exception:
+        return None
+
+
+def _stock_normalize_pct(values: list[float]) -> list[float]:
+    if not values:
+        return values
+
+    abs_max = max(abs(v) for v in values)
+    if abs_max <= 3:
+        return [v * 100.0 for v in values]
+
+    return values
+
+
+def _stock_is_forbidden_metric_key(key: str) -> bool:
+    k = str(key).lower()
+    return (
+        "ticker" in k or
+        "symbol" in k or
+        "name" in k or
+        "isin" in k or
+        "country" in k or
+        "exchange" in k or
+        "sector" in k or
+        "industry" in k or
+        "currency" in k or
+        "market_cap" in k or
+        "mcap" in k or
+        "price" in k or
+        "close" in k or
+        "open" in k or
+        "high" in k or
+        "low" in k or
+        "volume" in k or
+        "shares" in k or
+        "qty" in k or
+        "weight" in k or
+        "rank" in k or
+        k == "id"
+    )
+
+
+def _stock_metric_key_score(key: str) -> int:
+    k = str(key).lower()
+
+    if (
+        "return" in k or
+        "perf" in k or
+        "performance" in k or
+        "upside" in k or
+        "gain" in k or
+        "profit" in k or
+        "yield" in k or
+        "cagr" in k or
+        "expected" in k
+    ):
+        return 100
+
+    if (
+        "score" in k or
+        "alpha" in k or
+        "edge" in k or
+        "quality" in k or
+        "conviction" in k
+    ):
+        return 50
+
+    return 0
+
+
+def _choose_stock_metric_column(rows: list[dict]) -> tuple[str | None, list[float]]:
+    if not rows:
+        return None, []
+
+    keys = []
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for key in row.keys():
+            if key not in seen:
+                seen.add(key)
+                keys.append(key)
+
+    best_key = None
+    best_values = []
+    best_score = -10**18
+
+    for key in keys:
+        if _stock_is_forbidden_metric_key(str(key)):
+            continue
+
+        raw_values = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            val = _stock_parse_num(row.get(key))
+            if val is not None:
+                raw_values.append(val)
+
+        if len(raw_values) < 3:
+            continue
+
+        values = _stock_normalize_pct(raw_values)
+        min_v = min(values)
+        max_v = max(values)
+        spread = max_v - min_v
+
+        if spread == 0:
+            continue
+
+        if max(abs(v) for v in values) > 1000:
+            continue
+
+        score = (_stock_metric_key_score(str(key)) * 10) + spread + len(raw_values)
+
+        if score > best_score:
+            best_score = score
+            best_key = str(key)
+            best_values = values
+
+    return best_key, best_values
+
+
 def _build_stock_summary(latest: dict | None) -> dict:
     latest = latest or {}
     summary = dict(latest.get("summary") or {})
     top_rows = list(summary.get("top_rows") or [])
     portfolio_rows = list(summary.get("portfolio_rows") or [])
 
-    def row_return_pct(row: dict) -> float:
-        if not isinstance(row, dict):
-            return 0.0
-        for k, v in row.items():
-            kk = str(k).lower()
-            if "return" in kk or "perf" in kk or "upside" in kk or "gain" in kk:
-                s = str(v).replace("%", "").strip()
-                try:
-                    return float(s)
-                except Exception:
-                    continue
-        return 0.0
+    perf_source = top_rows if top_rows else portfolio_rows
+    metric_key, metric_values = _choose_stock_metric_column(perf_source[:50])
 
-    perf_source = portfolio_rows if portfolio_rows else top_rows
+    NOTIONAL_PER_TITLE = 1000.0
+
     points = []
-    gains = 0
-    losses = 0
-
-    for idx, row in enumerate(perf_source[:20]):
-        pct = row_return_pct(row)
-        money = pct  # proxy demo se non hai amount reale investito
-        if pct > 0:
-            gains += 1
-        elif pct < 0:
-            losses += 1
-
+    for idx, pct in enumerate(metric_values[:25]):
+        money = (pct / 100.0) * NOTIONAL_PER_TITLE
         points.append({
             "x": idx + 1,
-            "label": row.get("ticker") or row.get("symbol") or row.get("name") or f"Asset {idx+1}",
-            "profit_pct": round(pct, 2),
-            "profit_money": round(money, 2),
+            "label": f"Titolo {idx + 1}",
+            "profit_pct": round(float(pct), 2),
+            "profit_money": round(float(money), 2),
         })
 
-    avg_pct = round(sum(p["profit_pct"] for p in points) / len(points), 2) if points else 0.0
-    avg_money = round(sum(p["profit_money"] for p in points), 2) if points else 0.0
+    if not points:
+        return {
+            "profit_money": None,
+            "profit_pct": None,
+            "wins": 0,
+            "losses": 0,
+            "chart": [],
+            "public_metrics": {
+                "metric_key": metric_key,
+                "point_count": 0,
+                "avg_pct": None,
+                "best_pct": None,
+                "worst_pct": None,
+                "last_pct": None,
+                "last_money": None,
+                "total_money_estimate": None,
+                "positives": 0,
+                "negatives": 0,
+                "chart": [],
+            },
+        }
 
-    return {
-        "profit_money": avg_money,
-        "profit_pct": avg_pct,
-        "wins": gains,
-        "losses": losses,
+    avg_pct = sum(p["profit_pct"] for p in points) / len(points)
+    total_money = sum(p["profit_money"] for p in points)
+    best_pct = max(p["profit_pct"] for p in points)
+    worst_pct = min(p["profit_pct"] for p in points)
+    last_pct = points[-1]["profit_pct"]
+    last_money = points[-1]["profit_money"]
+    positives = sum(1 for p in points if p["profit_pct"] > 0)
+    negatives = sum(1 for p in points if p["profit_pct"] < 0)
+
+    public_metrics = {
+        "metric_key": metric_key,
+        "point_count": len(points),
+        "avg_pct": round(avg_pct, 2),
+        "best_pct": round(best_pct, 2),
+        "worst_pct": round(worst_pct, 2),
+        "last_pct": round(last_pct, 2),
+        "last_money": round(last_money, 2),
+        "total_money_estimate": round(total_money, 2),
+        "positives": positives,
+        "negatives": negatives,
         "chart": points,
     }
 
+    return {
+        "profit_money": round(total_money, 2),
+        "profit_pct": round(avg_pct, 2),
+        "wins": positives,
+        "losses": negatives,
+        "chart": points,
+        "public_metrics": public_metrics,
+    }
 
 def _build_combined_summary(crypto_summary: dict, stock_summary: dict) -> dict:
     crypto_chart = list(crypto_summary.get("chart") or [])
