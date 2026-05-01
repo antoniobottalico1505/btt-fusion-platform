@@ -30,6 +30,11 @@ type CombinedPoint = {
   combined_profit_pct: number
 }
 
+type MetricColumnPick = {
+  key: string | null
+  values: number[]
+}
+
 function n(v: unknown): number {
   const x = Number(v)
   return Number.isFinite(x) ? x : 0
@@ -52,37 +57,118 @@ function parseNumber(raw: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
-function extractRealPerformanceMetric(row: PublicRow): number | null {
-  const entries = Object.entries(row || {})
+function normalizePct(values: number[]): number[] {
+  if (!values.length) return values
 
-  const strictField = entries.find(([k, v]: [string, unknown]) => {
-    const kk = k.toLowerCase()
-    return (
-      (kk.includes('return') ||
-        kk.includes('perf') ||
-        kk.includes('performance') ||
-        kk.includes('upside') ||
-        kk.includes('gain') ||
-        kk.includes('profit') ||
-        kk.includes('yield') ||
-        kk.includes('cagr') ||
-        kk.includes('expected')) &&
-      String(v).trim() !== ''
-    )
-  })
+  const absMax = Math.max(...values.map((v: number) => Math.abs(v)))
 
-  if (strictField) {
-    const val = parseNumber(strictField[1])
-    if (val !== null) return Math.abs(val) <= 1 ? val * 100 : val
+  if (absMax <= 3) {
+    return values.map((v: number) => v * 100)
   }
 
-  const percentLike = entries.find(([, v]: [string, unknown]) => String(v).includes('%'))
-  if (percentLike) {
-    const val = parseNumber(percentLike[1])
-    if (val !== null) return val
+  return values
+}
+
+function isForbiddenMetricKey(key: string): boolean {
+  const k = key.toLowerCase()
+
+  return (
+    k.includes('ticker') ||
+    k.includes('symbol') ||
+    k.includes('name') ||
+    k.includes('isin') ||
+    k.includes('country') ||
+    k.includes('exchange') ||
+    k.includes('sector') ||
+    k.includes('industry') ||
+    k.includes('currency') ||
+    k.includes('market_cap') ||
+    k.includes('mcap') ||
+    k.includes('price') ||
+    k.includes('close') ||
+    k.includes('open') ||
+    k.includes('high') ||
+    k.includes('low') ||
+    k.includes('volume') ||
+    k.includes('shares') ||
+    k.includes('qty') ||
+    k.includes('weight') ||
+    k.includes('rank') ||
+    k === 'id'
+  )
+}
+
+function metricKeyScore(key: string): number {
+  const k = key.toLowerCase()
+
+  if (
+    k.includes('return') ||
+    k.includes('perf') ||
+    k.includes('performance') ||
+    k.includes('upside') ||
+    k.includes('gain') ||
+    k.includes('profit') ||
+    k.includes('yield') ||
+    k.includes('cagr') ||
+    k.includes('expected')
+  ) {
+    return 100
   }
 
-  return null
+  if (
+    k.includes('score') ||
+    k.includes('alpha') ||
+    k.includes('edge') ||
+    k.includes('quality') ||
+    k.includes('conviction')
+  ) {
+    return 50
+  }
+
+  return 0
+}
+
+function chooseRealMetricColumn(rows: PublicRow[]): MetricColumnPick {
+  if (!rows.length) return { key: null, values: [] }
+
+  const keys = Array.from(
+    new Set(rows.flatMap((row: PublicRow) => Object.keys(row || {})))
+  )
+
+  let bestKey: string | null = null
+  let bestValues: number[] = []
+  let bestScore = -Infinity
+
+  for (const key of keys) {
+    if (isForbiddenMetricKey(key)) continue
+
+    const rawValues = rows
+      .map((row: PublicRow) => parseNumber(row[key]))
+      .filter((v: number | null): v is number => v !== null)
+
+    if (rawValues.length < 3) continue
+
+    const values = normalizePct(rawValues)
+    const minV = Math.min(...values)
+    const maxV = Math.max(...values)
+    const spread = maxV - minV
+
+    if (spread === 0) continue
+    if (Math.max(...values.map((v: number) => Math.abs(v))) > 1000) continue
+
+    const score = metricKeyScore(key) * 10 + spread + rawValues.length
+
+    if (score > bestScore) {
+      bestScore = score
+      bestKey = key
+      bestValues = values
+    }
+  }
+
+  return {
+    key: bestKey,
+    values: bestValues,
+  }
 }
 
 function moneySigned(v: number): string {
@@ -124,15 +210,12 @@ export default function DashboardPage() {
       ? stock?.latest?.summary?.top_rows
       : stock?.latest?.summary?.portfolio_rows || []
 
-  const stockChart = useMemo<StockPoint[]>(() => {
+  const stockMetrics = useMemo(() => {
     const NOTIONAL_PER_ASSET = 1000
+    const picked = chooseRealMetricColumn(stockRows)
+    const values = picked.values
 
-    const realValues: number[] = stockRows
-      .slice(0, 20)
-      .map((row: PublicRow) => extractRealPerformanceMetric(row))
-      .filter((v: number | null): v is number => v !== null)
-
-    return realValues.map((pct: number, idx: number) => {
+    const chart: StockPoint[] = values.map((pct: number, idx: number) => {
       const money = (pct / 100) * NOTIONAL_PER_ASSET
       return {
         x: idx + 1,
@@ -141,26 +224,30 @@ export default function DashboardPage() {
         profit_pct: Number(pct.toFixed(2)),
       }
     })
+
+    const totalMoney = chart.reduce(
+      (acc: number, row: StockPoint) => acc + n(row.profit_money),
+      0
+    )
+
+    const avgPct = chart.length
+      ? chart.reduce((acc: number, row: StockPoint) => acc + n(row.profit_pct), 0) / chart.length
+      : 0
+
+    return {
+      pickedKey: picked.key,
+      chart,
+      totalMoney,
+      avgPct,
+    }
   }, [stockRows, stock?.latest?.created_at])
 
-  const stockTotalMoney = stockChart.reduce(
-    (acc: number, row: StockPoint) => acc + n(row.profit_money),
-    0
-  )
-
-  const stockAvgPct = stockChart.length
-    ? stockChart.reduce(
-        (acc: number, row: StockPoint) => acc + n(row.profit_pct),
-        0
-      ) / stockChart.length
-    : 0
-
   const combinedChart = useMemo<CombinedPoint[]>(() => {
-    const maxLen = Math.max(cryptoChart.length, stockChart.length)
+    const maxLen = Math.max(cryptoChart.length, stockMetrics.chart.length)
 
     return Array.from({ length: maxLen }).map((_, idx: number) => {
       const c = cryptoChart[idx]
-      const s = stockChart[idx]
+      const s = stockMetrics.chart[idx]
 
       const cryptoMoney = c ? n(c.profit_money) : 0
       const cryptoPct = c ? n(c.profit_pct) : 0
@@ -177,7 +264,7 @@ export default function DashboardPage() {
         combined_profit_pct: Number((((cryptoPct + stockPct) / 2)).toFixed(2)),
       }
     })
-  }, [cryptoChart, stockChart])
+  }, [cryptoChart, stockMetrics.chart])
 
   const combinedNow =
     combinedChart.length > 0
@@ -257,11 +344,11 @@ export default function DashboardPage() {
         </div>
         <div className="kpi">
           <span className="muted">Totale BTTstock</span>
-          <strong>{stockChart.length ? moneySigned(stockTotalMoney) : 'N/D'}</strong>
+          <strong>{stockMetrics.chart.length ? moneySigned(stockMetrics.totalMoney) : 'N/D'}</strong>
         </div>
         <div className="kpi">
           <span className="muted">Rendimento medio BTTstock</span>
-          <strong>{stockChart.length ? pctSigned(stockAvgPct) : 'N/D'}</strong>
+          <strong>{stockMetrics.chart.length ? pctSigned(stockMetrics.avgPct) : 'N/D'}</strong>
         </div>
       </div>
 
@@ -272,7 +359,7 @@ export default function DashboardPage() {
         </div>
         <div className="kpi">
           <span className="muted">Finestre stock aggregate</span>
-          <strong>{stockChart.length}</strong>
+          <strong>{stockMetrics.chart.length}</strong>
         </div>
       </div>
 
@@ -302,7 +389,8 @@ export default function DashboardPage() {
                 total_combined_points: combinedChart.length,
                 sector_leader: sectorLeader,
                 current_spread_money: Number(spreadMoney.toFixed(2)),
-                stock_windows: stockChart.length,
+                stock_windows: stockMetrics.chart.length,
+                detected_stock_metric_key: stockMetrics.pickedKey,
               },
               null,
               2
