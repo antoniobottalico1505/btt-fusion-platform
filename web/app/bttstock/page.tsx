@@ -18,20 +18,21 @@ type ChartPoint = {
   profit_money: number
 }
 
-function signedMoney(v: number): string {
-  const sign = v >= 0 ? '+' : '-'
-  return `${sign}$${Math.abs(v).toFixed(2)}`
+type PublicMetrics = {
+  metric_key: string | null
+  point_count: number
+  avg_pct: number | null
+  best_pct: number | null
+  worst_pct: number | null
+  last_pct: number | null
+  positives: number
+  negatives: number
+  chart: ChartPoint[]
 }
 
 function signedPct(v: number): string {
   const sign = v >= 0 ? '+' : '-'
   return `${sign}${Math.abs(v).toFixed(2)}%`
-}
-
-function maybeMoney(v: unknown): string {
-  const n = Number(v)
-  if (!Number.isFinite(n)) return 'N/D'
-  return signedMoney(n)
 }
 
 function maybePct(v: unknown): string {
@@ -79,8 +80,19 @@ export default function BTTstockPage() {
 
   const latest = data?.latest
   const summaryMetrics = data?.summary_metrics || {}
-  const publicMetrics = summaryMetrics?.public_metrics || {}
-  const chart: ChartPoint[] = publicMetrics?.chart || summaryMetrics?.chart || []
+  const publicMetrics: PublicMetrics = summaryMetrics?.public_metrics || {
+    metric_key: null,
+    point_count: 0,
+    avg_pct: null,
+    best_pct: null,
+    worst_pct: null,
+    last_pct: null,
+    positives: 0,
+    negatives: 0,
+    chart: [],
+  }
+
+  const chart: ChartPoint[] = Array.isArray(publicMetrics.chart) ? publicMetrics.chart : []
 
   return (
     <div className="shell section stack">
@@ -127,14 +139,6 @@ export default function BTTstockPage() {
 
         <div className="kpi-grid">
           <div className="kpi">
-            <span className="muted">Profitto / Perdita stimata totale</span>
-            <strong>{maybeMoney(publicMetrics?.total_money_estimate)}</strong>
-          </div>
-          <div className="kpi">
-            <span className="muted">Profitto / Perdita ultimo titolo</span>
-            <strong>{maybeMoney(publicMetrics?.last_money)}</strong>
-          </div>
-          <div className="kpi">
             <span className="muted">Rendimento medio %</span>
             <strong>{maybePct(publicMetrics?.avg_pct)}</strong>
           </div>
@@ -142,9 +146,6 @@ export default function BTTstockPage() {
             <span className="muted">Rendimento ultimo titolo</span>
             <strong>{maybePct(publicMetrics?.last_pct)}</strong>
           </div>
-        </div>
-
-        <div className="kpi-grid" style={{ marginTop: 14 }}>
           <div className="kpi">
             <span className="muted">Range migliore %</span>
             <strong>{maybePct(publicMetrics?.best_pct)}</strong>
@@ -153,6 +154,9 @@ export default function BTTstockPage() {
             <span className="muted">Range peggiore %</span>
             <strong>{maybePct(publicMetrics?.worst_pct)}</strong>
           </div>
+        </div>
+
+        <div className="kpi-grid" style={{ marginTop: 14 }}>
           <div className="kpi">
             <span className="muted">Titoli positivi</span>
             <strong>{publicMetrics?.positives ?? 0}</strong>
@@ -160,6 +164,10 @@ export default function BTTstockPage() {
           <div className="kpi">
             <span className="muted">Titoli negativi</span>
             <strong>{publicMetrics?.negatives ?? 0}</strong>
+          </div>
+          <div className="kpi">
+            <span className="muted">Titoli rilevati</span>
+            <strong>{publicMetrics?.point_count ?? 0}</strong>
           </div>
         </div>
 
@@ -169,10 +177,39 @@ export default function BTTstockPage() {
               <XAxis dataKey="x" />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey="profit_money" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="profit_pct" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="section-title">Percentuali dei titoli rilevati</h2>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Titolo</th>
+                <th>Rendimento %</th>
+                <th>Stato</th>
+              </tr>
+            </thead>
+            <tbody>
+              {chart.length === 0 ? (
+                <tr>
+                  <td colSpan={3}>Nessun dato disponibile</td>
+                </tr>
+              ) : (
+                chart.map((row: ChartPoint) => (
+                  <tr key={row.x}>
+                    <td>{row.label}</td>
+                    <td>{signedPct(row.profit_pct)}</td>
+                    <td>{row.profit_pct > 0 ? 'Positivo' : row.profit_pct < 0 ? 'Negativo' : 'Neutro'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -182,17 +219,17 @@ export default function BTTstockPage() {
           <div className="stack muted">
             <span>Nessun ticker mostrato pubblicamente.</span>
             <span>Nessun nome stock mostrato pubblicamente.</span>
-            <span>Nessun valore per singolo asset mostrato pubblicamente.</span>
+            <span>Ogni riga rappresenta un titolo rilevato in forma anonima.</span>
             <span>Output limitato a percentuali reali per titolo e risultati aggregati.</span>
           </div>
         </div>
 
         <div className="card">
-          <h2 className="section-title">Struttura pubblica</h2>
+          <h2 className="section-title">Significato dei dati</h2>
           <div className="stack muted">
             <span>Ogni punto della serie rappresenta un titolo trovato dal programma.</span>
             <span>La media % è la media reale delle percentuali dei titoli trovati.</span>
-            <span>Il totale in $ è una conversione pubblica teorica su base $1000 per titolo.</span>
+            <span>Titoli positivi/negativi indica quanti titoli hanno percentuale sopra o sotto zero.</span>
           </div>
         </div>
       </div>

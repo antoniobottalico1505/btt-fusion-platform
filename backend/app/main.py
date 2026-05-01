@@ -168,13 +168,19 @@ def _stock_parse_num(raw):
         return None
 
     s = s.replace("€", "").replace("$", "").replace(" ", "").replace(",", ".")
+    pct = False
     if s.endswith("%"):
+        pct = True
         s = s[:-1]
 
     try:
-        return float(s)
+        val = float(s)
     except Exception:
         return None
+
+    if pct:
+        return val
+    return val
 
 
 def _stock_normalize_pct(values: list[float]) -> list[float]:
@@ -250,6 +256,7 @@ def _choose_stock_metric_column(rows: list[dict]) -> tuple[str | None, list[floa
 
     keys = []
     seen = set()
+
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -307,16 +314,13 @@ def _build_stock_summary(latest: dict | None) -> dict:
     perf_source = top_rows if top_rows else portfolio_rows
     metric_key, metric_values = _choose_stock_metric_column(perf_source[:50])
 
-    NOTIONAL_PER_TITLE = 1000.0
-
     points = []
     for idx, pct in enumerate(metric_values[:25]):
-        money = (pct / 100.0) * NOTIONAL_PER_TITLE
         points.append({
             "x": idx + 1,
             "label": f"Titolo {idx + 1}",
             "profit_pct": round(float(pct), 2),
-            "profit_money": round(float(money), 2),
+            "profit_money": 0.0,
         })
 
     if not points:
@@ -333,8 +337,6 @@ def _build_stock_summary(latest: dict | None) -> dict:
                 "best_pct": None,
                 "worst_pct": None,
                 "last_pct": None,
-                "last_money": None,
-                "total_money_estimate": None,
                 "positives": 0,
                 "negatives": 0,
                 "chart": [],
@@ -342,11 +344,9 @@ def _build_stock_summary(latest: dict | None) -> dict:
         }
 
     avg_pct = sum(p["profit_pct"] for p in points) / len(points)
-    total_money = sum(p["profit_money"] for p in points)
     best_pct = max(p["profit_pct"] for p in points)
     worst_pct = min(p["profit_pct"] for p in points)
     last_pct = points[-1]["profit_pct"]
-    last_money = points[-1]["profit_money"]
     positives = sum(1 for p in points if p["profit_pct"] > 0)
     negatives = sum(1 for p in points if p["profit_pct"] < 0)
 
@@ -357,21 +357,20 @@ def _build_stock_summary(latest: dict | None) -> dict:
         "best_pct": round(best_pct, 2),
         "worst_pct": round(worst_pct, 2),
         "last_pct": round(last_pct, 2),
-        "last_money": round(last_money, 2),
-        "total_money_estimate": round(total_money, 2),
         "positives": positives,
         "negatives": negatives,
         "chart": points,
     }
 
     return {
-        "profit_money": round(total_money, 2),
+        "profit_money": None,
         "profit_pct": round(avg_pct, 2),
         "wins": positives,
         "losses": negatives,
         "chart": points,
         "public_metrics": public_metrics,
     }
+
 
 def _build_combined_summary(crypto_summary: dict, stock_summary: dict) -> dict:
     crypto_chart = list(crypto_summary.get("chart") or [])
