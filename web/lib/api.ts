@@ -1,5 +1,45 @@
 let memoryToken = ''
 
+const DEFAULT_API_BASE = 'https://btt-fusion-backend.onrender.com'
+
+function normalizeBase(value: string | undefined | null): string {
+  return String(value || '').trim().replace(/\/+$/, '')
+}
+
+function isFrontendOrigin(base: string): boolean {
+  if (typeof window === 'undefined') return false
+
+  try {
+    const target = new URL(base)
+    const current = new URL(window.location.origin)
+    return target.origin === current.origin
+  } catch {
+    return false
+  }
+}
+
+function getApiBases(): string[] {
+  const configured = normalizeBase(process.env.NEXT_PUBLIC_API_BASE_URL)
+  const fallback = normalizeBase(DEFAULT_API_BASE)
+  const bases: string[] = []
+
+  // Se per errore Vercel punta al frontend bttcapital.cc, lo ignora.
+  if (configured && !isFrontendOrigin(configured)) {
+    bases.push(configured)
+  }
+
+  bases.push(fallback)
+
+  return Array.from(new Set(bases.filter(Boolean)))
+}
+
+function makeApiError(message: string, status?: number, baseUrl?: string) {
+  const err = new Error(message)
+  ;(err as any).status = status
+  ;(err as any).baseUrl = baseUrl
+  return err
+}
+
 export function getToken(): string {
   if (typeof window !== 'undefined') {
     const stored = window.localStorage.getItem('access_token') || ''
@@ -40,27 +80,13 @@ export function setLocalVerifiedFlag(value: boolean) {
   }
 }
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  'https://btt-fusion-backend.onrender.com'
-
-export async function apiFetch<T = any>(
+async function apiFetchFromBase<T>(
+  baseUrl: string,
   path: string,
-  init?: RequestInit,
-  auth: boolean = false
+  init: RequestInit | undefined,
+  headers: Headers
 ): Promise<T> {
-  const headers = new Headers(init?.headers || {})
-  headers.set('Content-Type', 'application/json')
-
-  if (auth) {
-    const token = getToken()
-    if (!token) {
-      throw new Error('missing token')
-    }
-    headers.set('Authorization', `Bearer ${token}`)
-  }
-
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers,
     cache: 'no-store',
@@ -81,8 +107,49 @@ export async function apiFetch<T = any>(
       (typeof data === 'string' ? data : '') ||
       `HTTP ${res.status}`
 
-    throw new Error(String(detail))
+    throw makeApiError(String(detail), res.status, baseUrl)
   }
 
   return data as T
+}
+
+export async function apiFetch<T = any>(
+  path: string,
+  init?: RequestInit,
+  auth: boolean = false
+): Promise<T> {
+  const headers = new Headers(init?.headers || {})
+  headers.set('Content-Type', 'application/json')
+
+  if (auth) {
+    const token = getToken()
+    if (!token) {
+      throw makeApiError('missing token', 401)
+    }
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const bases = getApiBases()
+  let lastError: any = null
+
+  for (const baseUrl of bases) {
+    try {
+      return await apiFetchFromBase<T>(baseUrl, path, init, headers)
+    } catch (e: any) {
+      lastError = e
+
+      const status = Number(e?.status || 0)
+      const canRetryFallback =
+        baseUrl !== DEFAULT_API_BASE &&
+        (status === 0 || status === 404 || status === 405 || e instanceof TypeError)
+
+      if (canRetryFallback) {
+        continue
+      }
+
+      throw e
+    }
+  }
+
+  throw lastError || makeApiError('API non disponibile')
 }

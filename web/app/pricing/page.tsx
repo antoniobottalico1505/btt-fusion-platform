@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   apiFetch,
+  clearToken,
   getLocalVerifiedFlag,
   getToken,
   setLocalVerifiedFlag,
@@ -40,7 +41,24 @@ export default function PricingPage() {
         setLocalVerified(true)
       }
     } catch (e: any) {
-      setError((prev) => prev || e.message || 'Errore caricamento utente')
+      const msgText = String(e?.message || '')
+      const status = Number(e?.status || 0)
+      const lower = msgText.toLowerCase()
+
+      if (
+        status === 401 ||
+        lower.includes('missing token') ||
+        lower.includes('invalid token') ||
+        lower.includes('user not found') ||
+        lower.includes('notfound') ||
+        lower.includes('not found')
+      ) {
+        clearToken()
+        setMe(null)
+        return
+      }
+
+      setError((prev) => prev || msgText || 'Errore caricamento utente')
     }
   }
 
@@ -149,8 +167,14 @@ export default function PricingPage() {
         router.push('/login')
         return
       }
-      if (msgText.toLowerCase().includes('not found')) {
-        setError('Endpoint abbonamenti non trovato sul backend. Devi ridistribuire il backend Render corretto.')
+      if (
+        msgText.toLowerCase().includes('not found') ||
+        Number(e?.status || 0) === 404 ||
+        Number(e?.status || 0) === 405
+      ) {
+        setError(
+          'Checkout non raggiungibile: Vercel sta puntando al backend sbagliato oppure Render non ha ancora ridistribuito il backend aggiornato.'
+        )
         return
       }
       setError(msgText || 'Errore avvio checkout')
