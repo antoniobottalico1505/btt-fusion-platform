@@ -37,7 +37,7 @@ from app.services.admin_config import (
     set_microcap_config_text,
     set_microcap_env,
 )
-from app.services.billing import create_checkout_session, handle_checkout_completed, stripe_ready
+from app.services.billing import create_checkout_session, handle_checkout_completed, stripe_ready, stripe_status
 from app.services.bootstrap import init_app
 from app.services.btt_runner import create_btt_job
 from app.services.engine_manager import microcap_manager, user_microcap_manager
@@ -460,6 +460,11 @@ def health() -> dict:
     return {"ok": True, "app": settings.APP_NAME, "env": settings.APP_ENV}
 
 
+@app.get("/api/billing/status")
+def billing_status() -> dict:
+    return stripe_status()
+
+
 @app.post("/api/auth/register")
 def register(payload: RegisterIn, db: Session = Depends(get_db)):
     email = payload.email.lower().strip()
@@ -853,7 +858,21 @@ def billing_checkout(payload: StripeCheckoutIn, user: User = Depends(get_current
     if not _user_terms_ok(user):
         raise HTTPException(status_code=400, detail="Devi accettare Termini e Policy prima del checkout")
 
-    session = create_checkout_session(user, payload.plan)
+    try:
+        session = create_checkout_session(user, payload.plan)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Errore Stripe checkout: {type(exc).__name__}: {exc}",
+        )
+
+    if not getattr(session, "url", None):
+        raise HTTPException(status_code=502, detail="Stripe non ha restituito una URL checkout")
+
     return {"url": session.url}
 
 
