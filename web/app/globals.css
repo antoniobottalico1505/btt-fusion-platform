@@ -179,3 +179,207 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
 }
 }
 
+
+/* === BTTcapital mobile polish === */
+@media (max-width: 768px) {
+  html,
+  body {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at top, #143b84 0, #07111f 42%, #030712 100%);
+  }
+
+  .shell {
+    width: 100%;
+    max-width: 100%;
+    padding-left: 16px;
+    padding-right: 16px;
+    margin: 0 auto;
+  }
+
+  .topbar-inner {
+    padding: 12px 0;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .brand {
+    font-size: 15px;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+  }
+
+  .nav {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .nav a {
+    padding: 9px 10px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.07);
+    text-align: center;
+  }
+
+  .hero {
+    padding: 26px 0 18px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .panel,
+  .card,
+  .auth-card,
+  .metric,
+  .kpi {
+    width: 100%;
+    border-radius: 20px;
+  }
+
+  .hero-copy,
+  .card,
+  .auth-card {
+    padding: 18px;
+  }
+
+  .h1 {
+    font-size: 34px;
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    margin: 14px 0 12px;
+  }
+
+  .lead,
+  .section-sub,
+  .muted,
+  p {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .section {
+    padding: 14px 0 22px;
+  }
+
+  .section-title {
+    font-size: 22px;
+    line-height: 1.18;
+  }
+
+  .actions,
+  .grid-2,
+  .grid-3,
+  .kpi-grid,
+  .hero-stats {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  button,
+  .actions button,
+  input,
+  textarea,
+  select {
+    width: 100%;
+    min-height: 50px;
+    border-radius: 14px;
+    font-size: 15px;
+  }
+
+  input,
+  textarea,
+  select {
+    padding: 14px 15px;
+  }
+
+  .metric,
+  .kpi {
+    padding: 16px;
+  }
+
+  .metric-value {
+    font-size: 26px;
+  }
+
+  .kpi strong {
+    font-size: 24px;
+  }
+
+  .stack {
+    gap: 12px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 8px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    border-radius: 16px;
+  }
+
+  table {
+    min-width: 720px;
+  }
+
+  pre.log,
+  pre {
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+  }
+
+  .auth-card {
+    margin: 22px auto;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    line-height: 1.3;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  .shell {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .h1 {
+    font-size: 30px;
+  }
+
+  .section-title {
+    font-size: 20px;
+  }
+
+  .hero-copy,
+  .card,
+  .auth-card {
+    padding: 16px;
+  }
+
+  .nav {
+    grid-template-columns: 1fr;
+  }
+}
