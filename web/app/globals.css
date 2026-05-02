@@ -89,5 +89,93 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
   .site-copyright span {
     font-size: 10px;
   }
+
+@media (max-width: 768px) {
+  .shell {
+    width: 100%;
+    max-width: 100%;
+    padding-left: 16px;
+    padding-right: 16px;
+    box-sizing: border-box;
+  }
+
+  .section {
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .hero,
+  .grid-2,
+  .grid-3,
+  .kpi-grid,
+  .actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .hero {
+    align-items: stretch;
+  }
+
+  .hero-copy,
+  .hero-stats,
+  .panel,
+  .card,
+  .kpi,
+  .metric,
+  .auth-card {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 18px;
+  }
+
+  .section-title,
+  .h1 {
+    text-align: left;
+    line-height: 1.15;
+  }
+
+  .h1 {
+    font-size: 32px !important;
+  }
+
+  .section-sub,
+  .lead,
+  .muted,
+  .stack span,
+  p {
+    line-height: 1.5;
+  }
+
+  button,
+  .actions button,
+  .auth-card button,
+  input,
+  select,
+  textarea {
+    width: 100%;
+    min-height: 50px;
+    box-sizing: border-box;
+    border-radius: 14px;
+  }
+
+  input,
+  select,
+  textarea {
+    padding: 14px 16px;
+  }
+
+  .stack {
+    gap: 12px !important;
+  }
+
+  .log,
+  pre {
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
 }
 
