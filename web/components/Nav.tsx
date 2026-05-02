@@ -34,6 +34,7 @@ export function Nav() {
           <Link href="/bttcrypto">BTTcrypto</Link>
           <Link href="/bttstock">BTTstock</Link>
           <Link href="/pricing">Accesso</Link>
+          <Link href="/wallet">Wallet</Link>
           <Link href="/partners">For Partners</Link>
           <Link href="/methodology">Methodology</Link>
           <Link href="/risk">Risk</Link>

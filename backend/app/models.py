@@ -15,6 +15,11 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    wallet_address: Mapped[str] = mapped_column(String(80), default='')
+    wallet_chain_id: Mapped[int] = mapped_column(Integer, default=8453)
+    wallet_connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    wallet_link_message: Mapped[str] = mapped_column(Text, default='')
+    wallet_link_signature: Mapped[str] = mapped_column(Text, default='')
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(120), default='')
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)

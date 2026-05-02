@@ -194,6 +194,8 @@ export default function DashboardPage() {
         msgText.toLowerCase().includes('404')
       ) {
         setError('Controlli microcap live non trovati sul backend attuale.')
+      } else if (msgText.toLowerCase().includes('wallet')) {
+        setError('Collega prima il wallet dalla pagina Wallet. Il live non-custodial non usa private key sul server.')
       } else {
         setError(msgText || 'Errore avvio live')
       }

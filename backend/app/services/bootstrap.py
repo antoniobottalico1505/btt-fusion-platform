@@ -64,6 +64,11 @@ def _ensure_schema_compat() -> None:
     _add_column_if_missing("users", "stripe_subscription_id", f"{_dialect_text_type()} DEFAULT ''")
     _add_column_if_missing("users", "created_at", _dialect_datetime_type())
     _add_column_if_missing("users", "updated_at", _dialect_datetime_type())
+    _add_column_if_missing("users", "wallet_address", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("users", "wallet_chain_id", "INTEGER DEFAULT 8453")
+    _add_column_if_missing("users", "wallet_connected_at", _dialect_datetime_type())
+    _add_column_if_missing("users", "wallet_link_message", f"{_dialect_text_type()} DEFAULT ''")
+    _add_column_if_missing("users", "wallet_link_signature", f"{_dialect_text_type()} DEFAULT ''")
 
     # btt_jobs
     _add_column_if_missing("btt_jobs", "user_id", "INTEGER")

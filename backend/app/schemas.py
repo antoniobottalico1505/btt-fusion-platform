@@ -42,3 +42,16 @@ class ForgotPasswordIn(BaseModel):
 class ResetPasswordIn(BaseModel):
     token: str
     password: str = Field(min_length=6)
+
+class WalletConnectIn(BaseModel):
+    address: str
+    chain_id: int = 8453
+    message: str
+    signature: str
+
+
+class ZeroExQuoteIn(BaseModel):
+    chain_id: int = 8453
+    sell_token: str
+    buy_token: str
+    sell_amount: str

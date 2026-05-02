@@ -26,6 +26,8 @@ from app.schemas import (
     RegisterIn,
     ResetPasswordIn,
     StripeCheckoutIn,
+    WalletConnectIn,
+    ZeroExQuoteIn,
 )
 from app.security import create_access_token, get_password_hash, verify_password
 from app.services.access import ensure_trial, has_access
@@ -43,6 +45,7 @@ from app.services.btt_runner import create_btt_job
 from app.services.engine_manager import microcap_manager, user_microcap_manager
 from app.services.mailer import send_email
 from app.services.microcap_reader import read_dashboard
+from app.services.noncustodial import build_zeroex_quote, normalize_wallet_address, verify_wallet_signature
 
 settings = get_settings()
 app = FastAPI(title=settings.APP_NAME)
@@ -559,7 +562,103 @@ def auth_me(user: User = Depends(get_current_user)):
         "terms_ok": bool(terms_ok),
         "subscription_status": user.subscription_status or "inactive",
         "subscription_plan": user.subscription_plan or "none",
+        "wallet_address": user.wallet_address or "",
+        "wallet_chain_id": int(user.wallet_chain_id or 8453),
+        "wallet_connected": bool(user.wallet_address),
+        "non_custodial_ready": bool(
+            user.email_verified
+            and user.subscription_status == "active"
+            and user.wallet_address
+        ),
     }
+
+
+@app.get("/api/wallet/me")
+def wallet_me(user: User = Depends(get_current_user)):
+    return {
+        "wallet_connected": bool(user.wallet_address),
+        "wallet_address": user.wallet_address or "",
+        "wallet_chain_id": int(user.wallet_chain_id or 8453),
+        "subscription_status": user.subscription_status or "inactive",
+        "email_verified": bool(user.email_verified),
+        "terms_ok": _user_terms_ok(user),
+        "non_custodial_ready": bool(
+            user.email_verified
+            and _user_terms_ok(user)
+            and user.subscription_status == "active"
+            and user.wallet_address
+        ),
+    }
+
+
+@app.post("/api/wallet/connect")
+def wallet_connect(
+    payload: WalletConnectIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    address = normalize_wallet_address(payload.address)
+
+    ok = verify_wallet_signature(
+        address=address,
+        message=payload.message,
+        signature=payload.signature,
+    )
+
+    if not ok:
+        raise HTTPException(status_code=400, detail="Firma wallet non valida")
+
+    user.wallet_address = address
+    user.wallet_chain_id = int(payload.chain_id or 8453)
+    user.wallet_connected_at = datetime.now(timezone.utc)
+    user.wallet_link_message = payload.message
+    user.wallet_link_signature = payload.signature
+    db.commit()
+
+    return {
+        "ok": True,
+        "wallet_connected": True,
+        "wallet_address": user.wallet_address,
+        "wallet_chain_id": user.wallet_chain_id,
+    }
+
+
+@app.delete("/api/wallet/disconnect")
+def wallet_disconnect(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user.wallet_address = ""
+    user.wallet_chain_id = 8453
+    user.wallet_connected_at = None
+    user.wallet_link_message = ""
+    user.wallet_link_signature = ""
+    db.commit()
+
+    return {"ok": True, "wallet_connected": False}
+
+
+@app.post("/api/wallet/zeroex/quote")
+def wallet_zeroex_quote(
+    payload: ZeroExQuoteIn,
+    user: User = Depends(get_current_user),
+):
+    if not user.email_verified:
+        raise HTTPException(status_code=403, detail="Verifica prima la tua email")
+
+    if not _user_terms_ok(user):
+        raise HTTPException(status_code=403, detail="Accetta prima i termini")
+
+    if user.subscription_status != "active":
+        raise HTTPException(status_code=402, detail="Abbonamento attivo richiesto")
+
+    return build_zeroex_quote(
+        user=user,
+        chain_id=payload.chain_id,
+        sell_token=payload.sell_token,
+        buy_token=payload.buy_token,
+        sell_amount=payload.sell_amount,
+    )
 
 
 @app.get("/api/auth/verify-email")
@@ -814,9 +913,23 @@ def user_microcap_start_paper(user: User = Depends(get_current_user)):
 @app.post("/api/user/microcap/start-live")
 def user_microcap_start_live(user: User = Depends(get_current_user)):
     _ensure_live_access(user)
-    status = user_microcap_manager.restart(user.id, mode="live")
-    return {"ok": bool(status.get("running")), "status": status}
 
+    if not user.wallet_address:
+        raise HTTPException(
+            status_code=400,
+            detail="Collega prima il wallet: il live non-custodial richiede firma dal wallet cliente",
+        )
+
+    # Non-custodial: il server NON usa PRIVATE_KEY cliente.
+    # Avvia il motore in modalità segnali/sessione personale.
+    # L'esecuzione reale avviene via /api/wallet/zeroex/quote + firma wallet nel browser.
+    status = user_microcap_manager.restart(user.id, mode="paper")
+    status["mode"] = "noncustodial"
+    status["execution_model"] = "wallet_signed_transactions"
+    status["wallet_address"] = user.wallet_address
+    status["live_note"] = "Il server genera segnali/quote. Il wallet cliente firma le transazioni."
+
+    return {"ok": bool(status.get("running")), "status": status}
 
 @app.post("/api/user/microcap/stop")
 def user_microcap_stop(user: User = Depends(get_current_user)):
