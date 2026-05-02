@@ -26,8 +26,17 @@ class Settings(BaseSettings):
     MICROCAP_PUBLIC_MODE: str = "paper"
     MICROCAP_LIVE_ENABLED: bool = False
     STORAGE_ROOT: str = "./storage"
-    CORS_ALLOW_ORIGINS: str = "http://localhost:3000"
-    CORS_ALLOW_ORIGIN_REGEX: str = r"^https://([a-z0-9-]+\.)*vercel\.app$"
+    CORS_ALLOW_ORIGINS: str = (
+    "http://localhost:3000,"
+    "http://127.0.0.1:3000,"
+    "https://bttcapital.cc,"
+    "https://www.bttcapital.cc,"
+    "https://btt-fusion-platform.vercel.app"
+    )
+    CORS_ALLOW_ORIGIN_REGEX: str = (
+    r"^https://([a-z0-9-]+\.)*vercel\.app$|"
+    r"^https://(www\.)?bttcapital\.cc$"
+    )
 
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
