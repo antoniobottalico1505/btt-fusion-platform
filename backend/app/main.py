@@ -537,6 +537,26 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
     return {"access_token": token, "token_type": "bearer"}
 
 
+@app.get("/api/auth/me")
+def auth_me(user: User = Depends(get_current_user)):
+    terms_ok = _user_terms_ok(user)
+
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name or "",
+        "is_admin": bool(user.is_admin),
+        "is_active": bool(user.is_active),
+        "email_verified": bool(user.email_verified),
+        "accepted_terms_version": user.accepted_terms_version or "",
+        "accepted_terms_at": user.accepted_terms_at.isoformat() if user.accepted_terms_at else None,
+        "terms_version": settings.TERMS_VERSION,
+        "terms_ok": bool(terms_ok),
+        "subscription_status": user.subscription_status or "inactive",
+        "subscription_plan": user.subscription_plan or "none",
+    }
+
+
 @app.get("/api/auth/verify-email")
 def verify_email(token: str, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email_verify_token == token))

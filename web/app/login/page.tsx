@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { apiFetch, setToken } from '@/lib/api'
+import { apiFetch, setLocalVerifiedFlag, setToken } from '@/lib/api'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -11,13 +11,22 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [verifyMsg, setVerifyMsg] = useState(false)
+  const [nextPath, setNextPath] = useState('/dashboard')
 
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search)
       setVerifyMsg(params.get('verify') === '1')
+
+      const rawNext = params.get('next') || '/dashboard'
+      if (rawNext.startsWith('/') && !rawNext.startsWith('//')) {
+        setNextPath(rawNext)
+      } else {
+        setNextPath('/dashboard')
+      }
     } catch {
       setVerifyMsg(false)
+      setNextPath('/dashboard')
     }
   }, [])
 
@@ -37,7 +46,8 @@ export default function LoginPage() {
       }
 
       setToken(res.access_token)
-      router.push('/dashboard')
+      setLocalVerifiedFlag(true)
+      router.push(nextPath)
     } catch (err: any) {
       setError(err.message || 'Errore login')
     }
@@ -49,7 +59,9 @@ export default function LoginPage() {
       <p className="section-sub">Accedi dopo aver verificato la tua email.</p>
 
       {verifyMsg ? (
-        <div className="good">Controlla la tua email e verifica l’account prima del login.</div>
+        <div className="good">
+          Email verificata. Ora fai login: poi tornerai automaticamente alla pagina corretta.
+        </div>
       ) : null}
 
       <form className="stack" onSubmit={submit}>

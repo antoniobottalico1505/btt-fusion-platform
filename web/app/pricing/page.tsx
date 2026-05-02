@@ -11,10 +11,38 @@ import {
 } from '@/lib/api'
 
 type MeResponse = {
+  email?: string
   email_verified: boolean
   accepted_terms_version: string
+  accepted_terms_at?: string | null
   subscription_status: string
+  subscription_plan?: string
+  terms_version?: string
   terms_ok?: boolean
+}
+
+function isAuthExpiredError(e: any): boolean {
+  const status = Number(e?.status || 0)
+  const msg = String(e?.message || '').toLowerCase()
+
+  return (
+    status === 401 ||
+    msg.includes('missing token') ||
+    msg.includes('invalid token') ||
+    msg.includes('user not found')
+  )
+}
+
+function isMissingEndpointError(e: any): boolean {
+  const status = Number(e?.status || 0)
+  const msg = String(e?.message || '').toLowerCase()
+
+  return (
+    status === 404 ||
+    status === 405 ||
+    msg === 'not found' ||
+    msg.includes('not found')
+  )
 }
 
 export default function PricingPage() {
@@ -26,54 +54,65 @@ export default function PricingPage() {
   const [acceptChecked, setAcceptChecked] = useState(false)
   const [localVerified, setLocalVerified] = useState(false)
 
-  async function refreshMe() {
+  async function refreshMe(silent = true): Promise<MeResponse | null> {
     const token = getToken()
+
     if (!token) {
       setMe(null)
-      return
+      return null
     }
 
     try {
       const fresh = await apiFetch<MeResponse>('/api/auth/me', undefined, true)
       setMe(fresh)
+
       if (fresh?.email_verified) {
         setLocalVerifiedFlag(true)
         setLocalVerified(true)
+      } else {
+        setLocalVerifiedFlag(false)
+        setLocalVerified(false)
       }
-    } catch (e: any) {
-      const msgText = String(e?.message || '')
-      const status = Number(e?.status || 0)
-      const lower = msgText.toLowerCase()
 
-      if (
-        status === 401 ||
-        lower.includes('missing token') ||
-        lower.includes('invalid token') ||
-        lower.includes('user not found') ||
-        lower.includes('notfound') ||
-        lower.includes('not found')
-      ) {
+      return fresh
+    } catch (e: any) {
+      if (isAuthExpiredError(e)) {
         clearToken()
         setMe(null)
-        return
+        return null
       }
 
-      setError((prev) => prev || msgText || 'Errore caricamento utente')
+      if (isMissingEndpointError(e)) {
+        if (!silent) {
+          setError(
+            'Backend Render non aggiornato: manca /api/auth/me. Devi deployare il backend aggiornato.'
+          )
+        }
+        return null
+      }
+
+      if (!silent) {
+        setError(e?.message || 'Errore caricamento utente')
+      }
+
+      return null
     }
   }
 
   useEffect(() => {
     const lv = getLocalVerifiedFlag()
     setLocalVerified(lv)
-    refreshMe()
+    refreshMe(true)
   }, [])
 
   async function ensureLoggedIn() {
     const token = getToken()
+
     if (!token) {
-      router.push('/login')
+      router.push('/login?next=/pricing')
       return false
     }
+
     return true
   }
 
@@ -100,19 +139,23 @@ export default function PricingPage() {
         true
       )
 
-      await refreshMe()
-      setMsg('Termini accettati con successo')
+      await refreshMe(false)
+      setMsg('Termini accettati con successo. Ora puoi attivare l’abbonamento.')
     } catch (e: any) {
-      const msgText = String(e.message || '')
-      if (msgText.toLowerCase().includes('missing token')) {
-        router.push('/login')
+      if (isAuthExpiredError(e)) {
+        clearToken()
+        router.push('/login?next=/pricing')
         return
       }
-      if (msgText.toLowerCase().includes('not found')) {
-        setError('Endpoint termini non trovato sul backend. Devi ridistribuire il backend Render corretto.')
+
+      if (isMissingEndpointError(e)) {
+        setError(
+          'Backend Render non aggiornato: manca /api/user/accept-terms. Devi deployare il backend corretto.'
+        )
         return
       }
-      setError(msgText || 'Errore accettazione termini')
+
+      setError(e?.message || 'Errore accettazione termini')
     } finally {
       setBusy(false)
     }
@@ -130,16 +173,17 @@ export default function PricingPage() {
       const fresh = await apiFetch<MeResponse>('/api/auth/me', undefined, true)
       setMe(fresh)
 
-      const verifiedNow = !!fresh.email_verified || localVerified
-      if (fresh?.email_verified) {
-        setLocalVerifiedFlag(true)
-        setLocalVerified(true)
-      }
-
-      if (!verifiedNow) {
-        setError('La tua email non risulta ancora verificata')
+      if (!fresh?.email_verified) {
+        setLocalVerifiedFlag(false)
+        setLocalVerified(false)
+        setError(
+          'Il backend non vede questa email come verificata. Rientra dal link di verifica o fai logout/login dopo la verifica.'
+        )
         return
       }
+
+      setLocalVerifiedFlag(true)
+      setLocalVerified(true)
 
       if (!fresh.terms_ok && !fresh.accepted_terms_version) {
         setError('Devi prima accettare termini e policy')
@@ -162,29 +206,28 @@ export default function PricingPage() {
 
       window.location.href = res.url
     } catch (e: any) {
-      const msgText = String(e.message || '')
-      if (msgText.toLowerCase().includes('missing token')) {
-        router.push('/login')
+      if (isAuthExpiredError(e)) {
+        clearToken()
+        router.push('/login?next=/pricing')
         return
       }
-      if (
-        msgText.toLowerCase().includes('not found') ||
-        Number(e?.status || 0) === 404 ||
-        Number(e?.status || 0) === 405
-      ) {
+
+      if (isMissingEndpointError(e)) {
         setError(
           'Checkout non raggiungibile: Vercel sta puntando al backend sbagliato oppure Render non ha ancora ridistribuito il backend aggiornato.'
         )
         return
       }
-      setError(msgText || 'Errore avvio checkout')
+
+      setError(e?.message || 'Errore avvio checkout')
     } finally {
       setBusy(false)
     }
   }
 
-  const effectiveVerified = !!me?.email_verified || localVerified
+  const serverVerified = !!me?.email_verified
   const effectiveTerms = !!me?.terms_ok || !!me?.accepted_terms_version
+  const hasToken = !!getToken()
 
   return (
     <div className="shell section stack">
@@ -198,8 +241,15 @@ export default function PricingPage() {
       {msg ? <div className="good">{msg}</div> : null}
       {error ? <div className="bad">{error}</div> : null}
 
+      {!hasToken && localVerified ? (
+        <div className="good">
+          Email verificata. Ora devi solo fare login per accettare termini e abbonarti.
+        </div>
+      ) : null}
+
       <div className="card stack">
-        <div className="muted">Email verificata: {effectiveVerified ? 'Sì' : 'No'}</div>
+        <div className="muted">Login attivo: {hasToken ? 'Sì' : 'No'}</div>
+        <div className="muted">Email verificata lato server: {serverVerified ? 'Sì' : 'No'}</div>
         <div className="muted">Termini accettati: {effectiveTerms ? 'Sì' : 'No'}</div>
         <div className="muted">Abbonamento: {me?.subscription_status || 'inactive'}</div>
       </div>

@@ -34,7 +34,7 @@ export default function VerifyEmailPage() {
         setSuccess(true)
         setMessage(
           res?.message ||
-            'Email verificata con successo. Da ora puoi entrare sempre senza rifare la verifica.'
+            'Email verificata con successo. Ora fai login per attivare termini e abbonamento.'
         )
       })
       .catch((e: any) => {
@@ -59,11 +59,12 @@ export default function VerifyEmailPage() {
       )}
 
       <div className="stack" style={{ marginTop: 16 }}>
-        <Link href="/login">
-          <button>Vai al login</button>
+        <Link href="/login?next=/pricing">
+          <button>Vai al login e poi agli abbonamenti</button>
         </Link>
-        <Link href="/pricing">
-          <button className="secondary">Vai agli abbonamenti</button>
+
+        <Link href="/login">
+          <button className="secondary">Vai al login</button>
         </Link>
       </div>
     </div>
