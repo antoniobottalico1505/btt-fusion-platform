@@ -79,108 +79,6 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
   vertical-align: baseline;
 }
 
-@media (max-width: 640px) {
-  .site-copyright {
-    left: 10px;
-    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-    font-size: 10px;
-  }
-
-  .site-copyright span {
-    font-size: 10px;
-  }
-
-@media (max-width: 768px) {
-  .shell {
-    width: 100%;
-    max-width: 100%;
-    padding-left: 16px;
-    padding-right: 16px;
-    box-sizing: border-box;
-  }
-
-  .section {
-    padding-top: 18px;
-    padding-bottom: 18px;
-  }
-
-  .hero,
-  .grid-2,
-  .grid-3,
-  .kpi-grid,
-  .actions {
-    display: grid !important;
-    grid-template-columns: 1fr !important;
-    gap: 14px !important;
-  }
-
-  .hero {
-    align-items: stretch;
-  }
-
-  .hero-copy,
-  .hero-stats,
-  .panel,
-  .card,
-  .kpi,
-  .metric,
-  .auth-card {
-    width: 100%;
-    box-sizing: border-box;
-    border-radius: 18px;
-  }
-
-  .section-title,
-  .h1 {
-    text-align: left;
-    line-height: 1.15;
-  }
-
-  .h1 {
-    font-size: 32px !important;
-  }
-
-  .section-sub,
-  .lead,
-  .muted,
-  .stack span,
-  p {
-    line-height: 1.5;
-  }
-
-  button,
-  .actions button,
-  .auth-card button,
-  input,
-  select,
-  textarea {
-    width: 100%;
-    min-height: 50px;
-    box-sizing: border-box;
-    border-radius: 14px;
-  }
-
-  input,
-  select,
-  textarea {
-    padding: 14px 16px;
-  }
-
-  .stack {
-    gap: 12px !important;
-  }
-
-  .log,
-  pre {
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-}
-}
-
-
-/* === BTTcapital mobile polish === */
 @media (max-width: 768px) {
   html,
   body {
@@ -201,45 +99,84 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
     margin: 0 auto;
   }
 
+  .topbar {
+    position: sticky;
+    top: 0;
+  }
+
   .topbar-inner {
-    padding: 12px 0;
-    align-items: flex-start;
-    gap: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 16px 0;
   }
 
   .brand {
-    font-size: 15px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
   }
 
-  .brand-mark {
-    width: 34px;
-    height: 34px;
-    border-radius: 12px;
+  .brand img {
+    width: 72px !important;
+    height: 72px !important;
+    border-radius: 18px !important;
+    object-fit: contain;
+  }
+
+  .brand > div:last-child {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .brand .muted {
+    text-align: center;
+    font-size: 12px !important;
   }
 
   .nav {
     width: 100%;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    font-size: 13px;
+    gap: 10px;
+    color: var(--text);
   }
 
-  .nav a {
-    padding: 9px 10px;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.045);
-    border: 1px solid rgba(255,255,255,0.07);
+  .nav a,
+  .nav .pill {
+    min-height: 46px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.10);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     text-align: center;
+    line-height: 1.2;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .nav .pill {
+    grid-column: 1 / -1;
+    word-break: break-word;
   }
 
   .hero {
-    padding: 26px 0 18px;
+    padding: 28px 0 18px;
     display: grid;
     grid-template-columns: 1fr;
     gap: 16px;
   }
 
+  .hero-copy,
   .panel,
   .card,
   .auth-card,
@@ -247,6 +184,7 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
   .kpi {
     width: 100%;
     border-radius: 20px;
+    box-sizing: border-box;
   }
 
   .hero-copy,
@@ -256,10 +194,20 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
   }
 
   .h1 {
-    font-size: 34px;
-    line-height: 1.02;
+    font-size: 32px !important;
+    line-height: 1.03;
     letter-spacing: -0.035em;
     margin: 14px 0 12px;
+    text-align: left;
+  }
+
+  .section {
+    padding: 16px 0 24px;
+  }
+
+  .section-title {
+    font-size: 22px;
+    line-height: 1.18;
   }
 
   .lead,
@@ -270,34 +218,25 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
     line-height: 1.55;
   }
 
-  .section {
-    padding: 14px 0 22px;
-  }
-
-  .section-title {
-    font-size: 22px;
-    line-height: 1.18;
-  }
-
   .actions,
   .grid-2,
   .grid-3,
   .kpi-grid,
   .hero-stats {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
   }
 
-  button,
   .actions button,
+  button,
   input,
   textarea,
   select {
     width: 100%;
     min-height: 50px;
     border-radius: 14px;
-    font-size: 15px;
+    font-size: 14px;
   }
 
   input,
@@ -312,11 +251,11 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
   }
 
   .metric-value {
-    font-size: 26px;
+    font-size: 24px;
   }
 
   .kpi strong {
-    font-size: 24px;
+    font-size: 22px;
   }
 
   .stack {
@@ -349,7 +288,7 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
   }
 
   .auth-card {
-    margin: 22px auto;
+    margin: 24px auto;
   }
 
   .eyebrow {
@@ -357,16 +296,42 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
     line-height: 1.3;
     white-space: normal;
   }
+
+  .site-copyright {
+    left: 10px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    font-size: 10px;
+  }
+
+  .site-copyright span {
+    font-size: 10px;
+  }
 }
 
-@media (max-width: 420px) {
+@media (min-width: 600px) and (max-width: 900px) {
+  .nav,
+  .actions,
+  .grid-2,
+  .grid-3,
+  .kpi-grid,
+  .hero-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 430px) {
   .shell {
     padding-left: 12px;
     padding-right: 12px;
   }
 
+  .brand img {
+    width: 64px !important;
+    height: 64px !important;
+  }
+
   .h1 {
-    font-size: 30px;
+    font-size: 29px !important;
   }
 
   .section-title {
@@ -379,7 +344,13 @@ pre.log { white-space: pre-wrap; background: rgba(0,0,0,0.3); border: 1px solid 
     padding: 16px;
   }
 
-  .nav {
-    grid-template-columns: 1fr;
+  .nav,
+  .actions,
+  .grid-2,
+  .grid-3,
+  .kpi-grid,
+  .hero-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
+
