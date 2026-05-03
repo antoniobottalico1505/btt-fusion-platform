@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "BTTcapital"
     APP_ENV: str = "development"
     SECRET_KEY: str = "change-me"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 5256000
     DATABASE_URL: str = "sqlite:///./storage/app.db"
     FRONTEND_URL: str = "http://localhost:3000"
     ADMIN_EMAIL: str = "owner@example.com"

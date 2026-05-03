@@ -49,14 +49,25 @@ export default function LoginPage() {
       setLocalVerifiedFlag(true)
       router.push(nextPath)
     } catch (err: any) {
-      setError(err.message || 'Errore login')
+      const msg = String(err.message || '')
+
+      if (msg.toLowerCase().includes('credenziali non valide')) {
+        setError(
+          'Credenziali non valide. Se questa email era già verificata ma ora non entra più, il database backend è stato probabilmente resettato: usa PostgreSQL persistente su Render.'
+        )
+        return
+      }
+
+      setError(msg || 'Errore login')
     }
   }
 
   return (
     <div className="auth-card panel">
       <h1 className="section-title">Login</h1>
-      <p className="section-sub">Accedi dopo aver verificato la tua email.</p>
+      <p className="section-sub">
+        Accedi con l’email già verificata. La verifica email si fa una sola volta e resta valida.
+      </p>
 
       {verifyMsg ? (
         <div className="good">

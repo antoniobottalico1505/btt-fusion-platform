@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, getToken, goToLogin, isAuthMissingOrExpired } from '@/lib/api'
 import {
   ResponsiveContainer,
   LineChart,
@@ -66,6 +66,10 @@ export default function BTTstockPage() {
     setMsg('')
     setErr('')
     try {
+      if (!getToken()) {
+        goToLogin('/bttstock')
+        return
+      }
       const res = await apiFetch<{ job_id: number; status: string }>(
         '/api/user/btt/run',
         { method: 'POST' },
@@ -74,6 +78,11 @@ export default function BTTstockPage() {
       setMsg(`Analisi BTTstock avviata: job #${res.job_id}`)
       await load()
     } catch (e: any) {
+      if (isAuthMissingOrExpired(e)) {
+        goToLogin('/bttstock')
+        return
+      }
+
       setErr(e.message)
     }
   }

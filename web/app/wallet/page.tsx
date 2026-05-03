@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, getToken, goToLogin, isAuthMissingOrExpired } from '@/lib/api'
 import { requestWalletConnection, sendWalletTransaction } from '@/lib/wallet'
 
 type WalletState = {
@@ -31,9 +31,20 @@ export default function WalletPage() {
 
   async function loadWallet() {
     try {
+      if (!getToken()) {
+        setWallet(null)
+        setErr('Per usare il wallet devi prima fare login.')
+        return
+      }
+
       const res = await apiFetch<WalletState>('/api/wallet/me', undefined, true)
       setWallet(res)
     } catch (e: any) {
+      if (isAuthMissingOrExpired(e)) {
+        goToLogin('/wallet')
+        return
+      }
+
       setErr(e.message || 'Errore caricamento wallet')
     }
   }
@@ -48,6 +59,10 @@ export default function WalletPage() {
     setMsg('')
 
     try {
+      if (!getToken()) {
+        goToLogin('/wallet')
+        return
+      }
       const payload = await requestWalletConnection()
       const res = await apiFetch<WalletState>(
         '/api/wallet/connect',
@@ -62,6 +77,10 @@ export default function WalletPage() {
       setMsg('Wallet collegato correttamente')
       await loadWallet()
     } catch (e: any) {
+      if (isAuthMissingOrExpired(e)) {
+        goToLogin('/wallet')
+        return
+      }
       setErr(e.message || 'Errore collegamento wallet')
     } finally {
       setBusy(false)
@@ -74,11 +93,19 @@ export default function WalletPage() {
     setMsg('')
 
     try {
+      if (!getToken()) {
+        goToLogin('/wallet')
+        return
+      }
       await apiFetch('/api/wallet/disconnect', { method: 'DELETE' }, true)
       setQuote(null)
       setMsg('Wallet scollegato')
       await loadWallet()
     } catch (e: any) {
+      if (isAuthMissingOrExpired(e)) {
+        goToLogin('/wallet')
+        return
+      }
       setErr(e.message || 'Errore scollegamento wallet')
     } finally {
       setBusy(false)
@@ -92,6 +119,10 @@ export default function WalletPage() {
     setQuote(null)
 
     try {
+      if (!getToken()) {
+        goToLogin('/wallet')
+        return
+      }
       const res = await apiFetch<any>(
         '/api/wallet/zeroex/quote',
         {
@@ -109,6 +140,10 @@ export default function WalletPage() {
       setQuote(res)
       setMsg('Quote generata. Controlla e firma dal wallet solo se vuoi eseguire.')
     } catch (e: any) {
+      if (isAuthMissingOrExpired(e)) {
+        goToLogin('/wallet')
+        return
+      }
       setErr(e.message || 'Errore generazione quote')
     } finally {
       setBusy(false)

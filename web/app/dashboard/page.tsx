@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { apiFetch, getLocalVerifiedFlag } from '@/lib/api'
-import {
+import { apiFetch, getLocalVerifiedFlag, getToken, goToLogin, isAuthMissingOrExpired } from '@/lib/api'import {
   LineChart,
   Line,
   ResponsiveContainer,
@@ -134,6 +133,10 @@ export default function DashboardPage() {
     setMsg('')
 
     try {
+      if (!getToken()) {
+        goToLogin('/dashboard')
+        return
+      }
       const res = await apiFetch<any>('/api/user/microcap/start-paper', { method: 'POST' }, true)
       const status = res?.status || res
 
@@ -152,6 +155,10 @@ export default function DashboardPage() {
       await loadAll()
     } catch (e: any) {
       const msgText = String(e.message || '')
+      if (isAuthMissingOrExpired(e)) {
+        goToLogin('/dashboard')
+        return
+      }
       if (
         msgText.toLowerCase().includes('not found') ||
         msgText.toLowerCase().includes('404')
@@ -171,6 +178,10 @@ export default function DashboardPage() {
     setMsg('')
 
     try {
+      if (!getToken()) {
+        goToLogin('/dashboard')
+        return
+      }
       const res = await apiFetch<any>('/api/user/microcap/start-live', { method: 'POST' }, true)
       const status = res?.status || res
 
@@ -189,6 +200,10 @@ export default function DashboardPage() {
       await loadAll()
     } catch (e: any) {
       const msgText = String(e.message || '')
+      if (isAuthMissingOrExpired(e)) {
+        goToLogin('/dashboard')
+        return
+      }
       if (
         msgText.toLowerCase().includes('not found') ||
         msgText.toLowerCase().includes('404')
@@ -210,6 +225,10 @@ export default function DashboardPage() {
     setMsg('')
 
     try {
+      if (!getToken()) {
+        goToLogin('/dashboard')
+        return
+      }
       const res = await apiFetch<any>('/api/user/microcap/stop', { method: 'POST' }, true)
       const status = res?.status || res
 
@@ -223,6 +242,10 @@ export default function DashboardPage() {
       await loadAll()
     } catch (e: any) {
       const msgText = String(e.message || '')
+      if (isAuthMissingOrExpired(e)) {
+        goToLogin('/dashboard')
+        return
+      }
       if (
         msgText.toLowerCase().includes('not found') ||
         msgText.toLowerCase().includes('404')

@@ -153,3 +153,30 @@ export async function apiFetch<T = any>(
 
   throw lastError || makeApiError('API non disponibile')
 }
+export function isAuthMissingOrExpired(e: any): boolean {
+  const status = Number(e?.status || 0)
+  const msg = String(e?.message || '').toLowerCase()
+
+  return (
+    status === 401 ||
+    msg.includes('missing token') ||
+    msg.includes('invalid token') ||
+    msg.includes('user not found')
+  )
+}
+
+export function goToLogin(nextPath?: string) {
+  if (typeof window === 'undefined') return
+
+  const current =
+    nextPath ||
+    `${window.location.pathname}${window.location.search || ''}` ||
+    '/dashboard'
+
+  const safeNext =
+    current.startsWith('/') && !current.startsWith('//')
+      ? current
+      : '/dashboard'
+
+  window.location.href = `/login?next=${encodeURIComponent(safeNext)}`
+}
