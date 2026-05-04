@@ -111,6 +111,9 @@ export default function BTTstockPage() {
           <p className="section-sub">
             Vista pubblica aggregata senza esposizione di stock, ticker o numeri asset-specifici.
           </p>
+          <div className="good" style={{ marginTop: 12 }}>
+            BTTstock esegue elaborazioni reali su universi azionari e fonti esterne. È normale che il caricamento dei risultati richieda alcuni minuti.
+          </div>
         </div>
         <button onClick={run}>Avvia analisi BTTstock</button>
       </div>
