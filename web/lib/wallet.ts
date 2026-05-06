@@ -36,7 +36,7 @@ async function getWalletConnectProvider(): Promise<EthereumProvider> {
 
   if (!projectId) {
     throw new Error(
-      'Wallet non trovato in questo browser. Apri questa pagina nel browser di MetaMask/Rabby/Coinbase Wallet oppure imposta NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID su Vercel.'
+      'Wallet non disponibile da questo browser. Apri la pagina dal browser del tuo wallet o riprova da un dispositivo compatibile.'
     )
   }
 

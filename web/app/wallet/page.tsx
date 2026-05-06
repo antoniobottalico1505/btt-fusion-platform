@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, getToken, goToLogin, isAuthMissingOrExpired } from '@/lib/api'
 import {
-  getMetaMaskMobileLink,
-  hasWalletProvider,
   requestWalletConnection,
   sendErc20Approval,
   sendWalletTransaction,
@@ -37,7 +35,7 @@ function usdcToRaw(value: string): string {
   return raw || '0'
 }
 
-function shortTx(hash: string): string {
+function shortHash(hash: string): string {
   if (!hash) return ''
   return hash.length > 18 ? `${hash.slice(0, 10)}...${hash.slice(-8)}` : hash
 }
@@ -51,11 +49,11 @@ export default function WalletPage() {
   const [step, setStep] = useState('')
   const [lastApprovalHash, setLastApprovalHash] = useState('')
   const [lastSwapHash, setLastSwapHash] = useState('')
-  const [browserHasWallet, setBrowserHasWallet] = useState(false)
 
   const ready = !!wallet?.non_custodial_ready
   const walletConnected = !!wallet?.wallet_connected
-  const amountRaw = useMemo(() => {
+
+  const amountPreview = useMemo(() => {
     try {
       return usdcToRaw(amountUsdc)
     } catch {
@@ -65,11 +63,8 @@ export default function WalletPage() {
 
   async function loadWallet() {
     try {
-      setBrowserHasWallet(hasWalletProvider())
-
       if (!getToken()) {
         setWallet(null)
-        setErr('Per usare il wallet devi prima fare login.')
         return
       }
 
@@ -94,7 +89,7 @@ export default function WalletPage() {
     setBusy(true)
     setErr('')
     setMsg('')
-    setStep('Apertura wallet per collegamento...')
+    setStep('Collegamento wallet in corso...')
 
     try {
       if (!getToken()) {
@@ -124,7 +119,7 @@ export default function WalletPage() {
         return null
       }
 
-      setErr(e.message || 'Errore collegamento wallet')
+      setErr(e.message || 'Collegamento wallet non riuscito')
       setStep('')
       return null
     } finally {
@@ -145,6 +140,7 @@ export default function WalletPage() {
       }
 
       await apiFetch('/api/wallet/disconnect', { method: 'DELETE' }, true)
+
       setLastApprovalHash('')
       setLastSwapHash('')
       setMsg('Wallet scollegato.')
@@ -184,33 +180,33 @@ export default function WalletPage() {
       }
 
       if (!currentWallet?.wallet_connected) {
-        setErr('Collega prima il wallet.')
+        setErr('Wallet non collegato.')
         return
       }
 
       if (!currentWallet.email_verified) {
-        setErr('Devi prima verificare la tua email.')
+        setErr('Completa prima la verifica email.')
         return
       }
 
       if (!currentWallet.terms_ok) {
-        setErr('Devi prima accettare i termini dalla pagina Abbonamenti.')
+        setErr('Accetta prima termini e policy.')
         return
       }
 
       if (currentWallet.subscription_status !== 'active') {
-        setErr('Serve un abbonamento attivo per usare il live non-custodial.')
+        setErr('Serve un abbonamento attivo.')
         return
       }
 
       const raw = usdcToRaw(amountUsdc)
 
       if (BigInt(raw) <= 0n) {
-        setErr('Inserisci un importo USDC maggiore di zero.')
+        setErr('Inserisci un importo maggiore di zero.')
         return
       }
 
-      setStep('Preparazione operazione BTTcrypto...')
+      setStep('Preparazione operazione...')
 
       const firstQuote = await apiFetch<any>(
         '/api/wallet/zeroex/quote',
@@ -227,13 +223,10 @@ export default function WalletPage() {
       )
 
       const allowanceIssue = firstQuote?.quote?.issues?.allowance
-      const spender =
-        allowanceIssue?.spender ||
-        firstQuote?.allowance_target ||
-        ''
+      const spender = allowanceIssue?.spender || firstQuote?.allowance_target || ''
 
       if (allowanceIssue && spender) {
-        setStep('Prima autorizzazione USDC: conferma nel wallet.')
+        setStep('Conferma autorizzazione nel wallet.')
 
         const approvalHash = await sendErc20Approval({
           token: BASE_USDC,
@@ -243,12 +236,12 @@ export default function WalletPage() {
         })
 
         setLastApprovalHash(approvalHash)
-        setStep('Autorizzazione inviata. Preparazione transazione finale...')
+        setStep('Autorizzazione inviata. Preparazione finale...')
 
         await new Promise((resolve) => setTimeout(resolve, 7000))
       }
 
-      setStep('Apertura wallet per firma della transazione...')
+      setStep('Conferma operazione nel wallet.')
 
       const finalQuote = await apiFetch<any>(
         '/api/wallet/zeroex/quote',
@@ -265,13 +258,14 @@ export default function WalletPage() {
       )
 
       if (!finalQuote?.transaction) {
-        setErr('0x non ha restituito una transazione firmabile.')
+        setErr('Operazione non disponibile in questo momento.')
         return
       }
 
       const txHash = await sendWalletTransaction(finalQuote.transaction)
+
       setLastSwapHash(txHash)
-      setMsg('Operazione inviata dal wallet. BTTcapital non ha mai visto la tua private key.')
+      setMsg('Operazione inviata.')
       setStep('')
     } catch (e: any) {
       if (isAuthMissingOrExpired(e)) {
@@ -279,7 +273,7 @@ export default function WalletPage() {
         return
       }
 
-      setErr(e.message || 'Errore operazione wallet')
+      setErr(e.message || 'Operazione non riuscita')
       setStep('')
     } finally {
       setBusy(false)
@@ -289,9 +283,9 @@ export default function WalletPage() {
   return (
     <div className="shell section stack">
       <div>
-        <h1 className="section-title">Wallet non-custodial</h1>
+        <h1 className="section-title">Wallet</h1>
         <p className="section-sub">
-          Collega il wallet e autorizza le operazioni dal tuo wallet. BTTcapital prepara l’operazione, ma non conserva mai la private key.
+          Collega il wallet e gestisci le operazioni live in modalità non-custodial.
         </p>
       </div>
 
@@ -300,14 +294,15 @@ export default function WalletPage() {
       {step ? <div className="good">{step}</div> : null}
 
       <div className="card stack">
-        <h2 className="section-title">Stato accesso</h2>
+        <h2 className="section-title">Stato wallet</h2>
+
         <div className="muted">Wallet collegato: {walletConnected ? 'Sì' : 'No'}</div>
         <div className="muted">Address: {wallet?.wallet_address || 'N/D'}</div>
-        <div className="muted">Rete: Base / Chain ID {wallet?.wallet_chain_id || BASE_CHAIN_ID}</div>
+        <div className="muted">Rete: Base</div>
         <div className="muted">Email verificata: {wallet?.email_verified ? 'Sì' : 'No'}</div>
         <div className="muted">Termini accettati: {wallet?.terms_ok ? 'Sì' : 'No'}</div>
         <div className="muted">Abbonamento: {wallet?.subscription_status || 'inactive'}</div>
-        <div className="muted">Live non-custodial pronto: {ready ? 'Sì' : 'No'}</div>
+        <div className="muted">Operatività live: {ready ? 'Attiva' : 'Non attiva'}</div>
 
         <div className="actions">
           <button onClick={() => connectWallet()} disabled={busy}>
@@ -318,25 +313,13 @@ export default function WalletPage() {
             Scollega wallet
           </button>
         </div>
-
-        {!browserHasWallet ? (
-          <div className="bad">
-            Questo browser non espone un wallet. Apri questa pagina nel browser di MetaMask oppure usa WalletConnect configurando NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID.
-            <div style={{ marginTop: 12 }}>
-              <a href={getMetaMaskMobileLink('/wallet')}>Apri in MetaMask mobile</a>
-            </div>
-          </div>
-        ) : null}
       </div>
 
       <div className="card stack">
-        <h2 className="section-title">Operazione live guidata</h2>
-        <p className="section-sub">
-          Il cliente non deve generare quote manualmente. Qui inserisce solo il capitale operativo; la quote viene preparata dietro le quinte e il wallet apre automaticamente le conferme necessarie.
-        </p>
+        <h2 className="section-title">Operazione live</h2>
 
         <label className="stack">
-          <span className="muted">Capitale da usare su Base, in USDC</span>
+          <span className="muted">Capitale operativo in USDC</span>
           <input
             value={amountUsdc}
             inputMode="decimal"
@@ -345,37 +328,28 @@ export default function WalletPage() {
           />
         </label>
 
-        <div className="muted">
-          Importo tecnico inviato al backend: {amountRaw} unità raw USDC.
-        </div>
-
         <button onClick={authorizeOperation} disabled={busy}>
-          Autorizza operazione dal wallet
+          Autorizza dal wallet
         </button>
 
         <div className="muted">
-          Prima volta: il wallet può chiedere due conferme, una per approvare USDC e una per inviare lo swap. Le volte successive di solito basta la firma della transazione.
+          Importo selezionato: {amountUsdc || '0'} USDC
         </div>
       </div>
 
       {(lastApprovalHash || lastSwapHash) ? (
         <div className="card stack">
           <h2 className="section-title">Ultima operazione</h2>
+
           {lastApprovalHash ? (
-            <div className="muted">Approval USDC: {shortTx(lastApprovalHash)}</div>
+            <div className="muted">Autorizzazione: {shortHash(lastApprovalHash)}</div>
           ) : null}
+
           {lastSwapHash ? (
-            <div className="muted">Transazione swap: {shortTx(lastSwapHash)}</div>
+            <div className="muted">Transazione: {shortHash(lastSwapHash)}</div>
           ) : null}
         </div>
       ) : null}
-
-      <div className="card stack">
-        <h2 className="section-title">Cosa vede il cliente</h2>
-        <div className="muted">
-          Niente private key, niente JSON tecnico, niente quote manuali. Il cliente collega il wallet, sceglie capitale e conferma dal wallet.
-        </div>
-      </div>
     </div>
   )
 }
