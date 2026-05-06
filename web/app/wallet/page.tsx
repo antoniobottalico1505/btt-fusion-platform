@@ -2,354 +2,41 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, getToken, goToLogin, isAuthMissingOrExpired } from '@/lib/api'
-import {
-  requestWalletConnection,
-  sendErc20Approval,
-  sendWalletTransaction,
-} from '@/lib/wallet'
+import { requestEvmWalletConnection, requestSolanaWalletConnection, sendErc20Approval, sendEvmWalletTransaction, sendSolanaSwapTransaction } from '@/lib/wallet'
 
-type WalletState = {
-  wallet_connected: boolean
-  wallet_address: string
-  wallet_chain_id: number
-  subscription_status: string
-  email_verified: boolean
-  terms_ok: boolean
-  non_custodial_ready: boolean
-}
-
-const BASE_CHAIN_ID = 8453
+type DualWalletState = { email_verified: boolean; terms_ok: boolean; subscription_status: string; paid_ready: boolean; evm: { connected: boolean; address: string; chain_id: number; ready: boolean }; solana: { connected: boolean; address: string; ready: boolean } }
+const EVM_CHAIN_ID = 8453
 const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const BASE_WETH = '0x4200000000000000000000000000000000000006'
-
-function usdcToRaw(value: string): string {
-  const clean = String(value || '0').replace(',', '.').trim()
-
-  if (!/^\d+(\.\d{0,6})?$/.test(clean)) {
-    throw new Error('Importo USDC non valido')
-  }
-
-  const [whole, frac = ''] = clean.split('.')
-  const raw = `${whole}${frac.padEnd(6, '0')}`.replace(/^0+(?=\d)/, '')
-
-  return raw || '0'
-}
-
-function shortHash(hash: string): string {
-  if (!hash) return ''
-  return hash.length > 18 ? `${hash.slice(0, 10)}...${hash.slice(-8)}` : hash
-}
+const SOLANA_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+const SOLANA_SOL = 'So11111111111111111111111111111111111111112'
+function usdcToRaw(value: string): string { const clean = String(value || '0').replace(',', '.').trim(); if (!/^\d+(\.\d{0,6})?$/.test(clean)) throw new Error('Importo USDC non valido'); const [whole, frac = ''] = clean.split('.'); const raw = `${whole}${frac.padEnd(6, '0')}`.replace(/^0+(?=\d)/, ''); return raw || '0' }
+function shortHash(hash: string): string { if (!hash) return ''; return hash.length > 18 ? `${hash.slice(0, 10)}...${hash.slice(-8)}` : hash }
 
 export default function WalletPage() {
-  const [wallet, setWallet] = useState<WalletState | null>(null)
-  const [amountUsdc, setAmountUsdc] = useState('1')
+  const [wallet, setWallet] = useState<DualWalletState | null>(null)
+  const [evmAmount, setEvmAmount] = useState('1')
+  const [solAmount, setSolAmount] = useState('1')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [step, setStep] = useState('')
-  const [lastApprovalHash, setLastApprovalHash] = useState('')
-  const [lastSwapHash, setLastSwapHash] = useState('')
+  const [lastEvmHash, setLastEvmHash] = useState('')
+  const [lastSolHash, setLastSolHash] = useState('')
+  const evmRaw = useMemo(() => { try { return usdcToRaw(evmAmount) } catch { return '0' } }, [evmAmount])
+  const solRaw = useMemo(() => { try { return usdcToRaw(solAmount) } catch { return '0' } }, [solAmount])
 
-  const ready = !!wallet?.non_custodial_ready
-  const walletConnected = !!wallet?.wallet_connected
+  async function loadWallet() { try { if (!getToken()) { setWallet(null); return } const res = await apiFetch<DualWalletState>('/api/wallet/dual/me', undefined, true); setWallet(res); setErr('') } catch (e: any) { if (isAuthMissingOrExpired(e)) { goToLogin('/wallet'); return } setErr(e.message || 'Errore caricamento wallet') } }
+  useEffect(() => { loadWallet() }, [])
+  function guard(kind: 'evm' | 'solana'): boolean { if (!wallet?.email_verified) { setErr('Completa prima la verifica email.'); return false } if (!wallet?.terms_ok) { setErr('Accetta prima termini e policy.'); return false } if (wallet?.subscription_status !== 'active') { setErr('Serve un abbonamento attivo.'); return false } if (kind === 'evm' && !wallet?.evm.connected) { setErr('Collega prima il wallet EVM.'); return false } if (kind === 'solana' && !wallet?.solana.connected) { setErr('Collega prima il wallet Solana.'); return false } return true }
 
-  const amountPreview = useMemo(() => {
-    try {
-      return usdcToRaw(amountUsdc)
-    } catch {
-      return '0'
-    }
-  }, [amountUsdc])
+  async function connectEvm() { setBusy(true); setErr(''); setMsg(''); setStep('Collegamento wallet EVM...'); try { if (!getToken()) { goToLogin('/wallet'); return } const payload = await requestEvmWalletConnection(); await apiFetch('/api/wallet/evm/connect', { method: 'POST', body: JSON.stringify(payload) }, true); setMsg('Wallet EVM collegato.'); setStep(''); await loadWallet() } catch (e: any) { if (isAuthMissingOrExpired(e)) { goToLogin('/wallet'); return } setErr(e.message || 'Collegamento EVM non riuscito'); setStep('') } finally { setBusy(false) } }
+  async function connectSolana() { setBusy(true); setErr(''); setMsg(''); setStep('Collegamento wallet Solana...'); try { if (!getToken()) { goToLogin('/wallet'); return } const payload = await requestSolanaWalletConnection(); await apiFetch('/api/wallet/solana/connect', { method: 'POST', body: JSON.stringify(payload) }, true); setMsg('Wallet Solana collegato.'); setStep(''); await loadWallet() } catch (e: any) { if (isAuthMissingOrExpired(e)) { goToLogin('/wallet'); return } setErr(e.message || 'Collegamento Solana non riuscito'); setStep('') } finally { setBusy(false) } }
+  async function disconnectEvm() { setBusy(true); setErr(''); setMsg(''); setStep('Scollegamento wallet EVM...'); try { await apiFetch('/api/wallet/evm/disconnect', { method: 'DELETE' }, true); setMsg('Wallet EVM scollegato.'); setStep(''); await loadWallet() } catch (e: any) { setErr(e.message || 'Errore scollegamento EVM'); setStep('') } finally { setBusy(false) } }
+  async function disconnectSolana() { setBusy(true); setErr(''); setMsg(''); setStep('Scollegamento wallet Solana...'); try { await apiFetch('/api/wallet/solana/disconnect', { method: 'DELETE' }, true); setMsg('Wallet Solana scollegato.'); setStep(''); await loadWallet() } catch (e: any) { setErr(e.message || 'Errore scollegamento Solana'); setStep('') } finally { setBusy(false) } }
 
-  async function loadWallet() {
-    try {
-      if (!getToken()) {
-        setWallet(null)
-        return
-      }
+  async function authorizeEvm() { setBusy(true); setErr(''); setMsg(''); setStep(''); setLastEvmHash(''); try { if (!guard('evm')) return; const raw = usdcToRaw(evmAmount); if (BigInt(raw) <= 0n) throw new Error('Inserisci un importo maggiore di zero.'); setStep('Preparazione EVM...'); const firstQuote = await apiFetch<any>('/api/wallet/evm/quote', { method: 'POST', body: JSON.stringify({ chain_id: EVM_CHAIN_ID, sell_token: BASE_USDC, buy_token: BASE_WETH, sell_amount: raw }) }, true); const allowanceIssue = firstQuote?.quote?.issues?.allowance; const spender = allowanceIssue?.spender || firstQuote?.allowance_target || ''; if (allowanceIssue && spender) { setStep('Conferma autorizzazione EVM nel wallet.'); await sendErc20Approval({ token: BASE_USDC, spender, amountRaw: raw, from: wallet!.evm.address }); setStep('Autorizzazione inviata. Preparazione finale EVM...'); await new Promise((resolve) => setTimeout(resolve, 7000)) } setStep('Conferma operazione EVM nel wallet.'); const finalQuote = await apiFetch<any>('/api/wallet/evm/quote', { method: 'POST', body: JSON.stringify({ chain_id: EVM_CHAIN_ID, sell_token: BASE_USDC, buy_token: BASE_WETH, sell_amount: raw }) }, true); if (!finalQuote?.transaction) throw new Error('Operazione EVM non disponibile.'); const txHash = await sendEvmWalletTransaction(finalQuote.transaction); setLastEvmHash(txHash); setMsg('Operazione EVM inviata.'); setStep('') } catch (e: any) { if (isAuthMissingOrExpired(e)) { goToLogin('/wallet'); return } setErr(e.message || 'Operazione EVM non riuscita'); setStep('') } finally { setBusy(false) } }
+  async function authorizeSolana() { setBusy(true); setErr(''); setMsg(''); setStep(''); setLastSolHash(''); try { if (!guard('solana')) return; const raw = usdcToRaw(solAmount); if (BigInt(raw) <= 0n) throw new Error('Inserisci un importo maggiore di zero.'); setStep('Preparazione Solana...'); const swap = await apiFetch<any>('/api/wallet/solana/swap', { method: 'POST', body: JSON.stringify({ sell_mint: SOLANA_USDC, buy_mint: SOLANA_SOL, amount: raw, slippage_bps: 600 }) }, true); if (!swap?.swap_transaction) throw new Error('Operazione Solana non disponibile.'); setStep('Conferma operazione Solana nel wallet.'); const signature = await sendSolanaSwapTransaction(swap.swap_transaction); setLastSolHash(signature); setMsg('Operazione Solana inviata.'); setStep('') } catch (e: any) { if (isAuthMissingOrExpired(e)) { goToLogin('/wallet'); return } setErr(e.message || 'Operazione Solana non riuscita'); setStep('') } finally { setBusy(false) } }
 
-      const res = await apiFetch<WalletState>('/api/wallet/me', undefined, true)
-      setWallet(res)
-      setErr('')
-    } catch (e: any) {
-      if (isAuthMissingOrExpired(e)) {
-        goToLogin('/wallet')
-        return
-      }
-
-      setErr(e.message || 'Errore caricamento wallet')
-    }
-  }
-
-  useEffect(() => {
-    loadWallet()
-  }, [])
-
-  async function connectWallet(): Promise<WalletState | null> {
-    setBusy(true)
-    setErr('')
-    setMsg('')
-    setStep('Collegamento wallet in corso...')
-
-    try {
-      if (!getToken()) {
-        goToLogin('/wallet')
-        return null
-      }
-
-      const payload = await requestWalletConnection()
-
-      const res = await apiFetch<WalletState>(
-        '/api/wallet/connect',
-        {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        },
-        true
-      )
-
-      setWallet(res)
-      setMsg('Wallet collegato correttamente.')
-      setStep('')
-      await loadWallet()
-      return res
-    } catch (e: any) {
-      if (isAuthMissingOrExpired(e)) {
-        goToLogin('/wallet')
-        return null
-      }
-
-      setErr(e.message || 'Collegamento wallet non riuscito')
-      setStep('')
-      return null
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function disconnectWallet() {
-    setBusy(true)
-    setErr('')
-    setMsg('')
-    setStep('Scollegamento wallet...')
-
-    try {
-      if (!getToken()) {
-        goToLogin('/wallet')
-        return
-      }
-
-      await apiFetch('/api/wallet/disconnect', { method: 'DELETE' }, true)
-
-      setLastApprovalHash('')
-      setLastSwapHash('')
-      setMsg('Wallet scollegato.')
-      setStep('')
-      await loadWallet()
-    } catch (e: any) {
-      if (isAuthMissingOrExpired(e)) {
-        goToLogin('/wallet')
-        return
-      }
-
-      setErr(e.message || 'Errore scollegamento wallet')
-      setStep('')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function authorizeOperation() {
-    setBusy(true)
-    setErr('')
-    setMsg('')
-    setStep('')
-    setLastApprovalHash('')
-    setLastSwapHash('')
-
-    try {
-      if (!getToken()) {
-        goToLogin('/wallet')
-        return
-      }
-
-      let currentWallet = wallet
-
-      if (!currentWallet?.wallet_connected) {
-        currentWallet = await connectWallet()
-      }
-
-      if (!currentWallet?.wallet_connected) {
-        setErr('Wallet non collegato.')
-        return
-      }
-
-      if (!currentWallet.email_verified) {
-        setErr('Completa prima la verifica email.')
-        return
-      }
-
-      if (!currentWallet.terms_ok) {
-        setErr('Accetta prima termini e policy.')
-        return
-      }
-
-      if (currentWallet.subscription_status !== 'active') {
-        setErr('Serve un abbonamento attivo.')
-        return
-      }
-
-      const raw = usdcToRaw(amountUsdc)
-
-      if (BigInt(raw) <= 0n) {
-        setErr('Inserisci un importo maggiore di zero.')
-        return
-      }
-
-      setStep('Preparazione operazione...')
-
-      const firstQuote = await apiFetch<any>(
-        '/api/wallet/zeroex/quote',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            chain_id: BASE_CHAIN_ID,
-            sell_token: BASE_USDC,
-            buy_token: BASE_WETH,
-            sell_amount: raw,
-          }),
-        },
-        true
-      )
-
-      const allowanceIssue = firstQuote?.quote?.issues?.allowance
-      const spender = allowanceIssue?.spender || firstQuote?.allowance_target || ''
-
-      if (allowanceIssue && spender) {
-        setStep('Conferma autorizzazione nel wallet.')
-
-        const approvalHash = await sendErc20Approval({
-          token: BASE_USDC,
-          spender,
-          amountRaw: raw,
-          from: currentWallet.wallet_address,
-        })
-
-        setLastApprovalHash(approvalHash)
-        setStep('Autorizzazione inviata. Preparazione finale...')
-
-        await new Promise((resolve) => setTimeout(resolve, 7000))
-      }
-
-      setStep('Conferma operazione nel wallet.')
-
-      const finalQuote = await apiFetch<any>(
-        '/api/wallet/zeroex/quote',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            chain_id: BASE_CHAIN_ID,
-            sell_token: BASE_USDC,
-            buy_token: BASE_WETH,
-            sell_amount: raw,
-          }),
-        },
-        true
-      )
-
-      if (!finalQuote?.transaction) {
-        setErr('Operazione non disponibile in questo momento.')
-        return
-      }
-
-      const txHash = await sendWalletTransaction(finalQuote.transaction)
-
-      setLastSwapHash(txHash)
-      setMsg('Operazione inviata.')
-      setStep('')
-    } catch (e: any) {
-      if (isAuthMissingOrExpired(e)) {
-        goToLogin('/wallet')
-        return
-      }
-
-      setErr(e.message || 'Operazione non riuscita')
-      setStep('')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="shell section stack">
-      <div>
-        <h1 className="section-title">Wallet</h1>
-        <p className="section-sub">
-          Collega il wallet e gestisci le operazioni live in modalità non-custodial.
-        </p>
-      </div>
-
-      {msg ? <div className="good">{msg}</div> : null}
-      {err ? <div className="bad">{err}</div> : null}
-      {step ? <div className="good">{step}</div> : null}
-
-      <div className="card stack">
-        <h2 className="section-title">Stato wallet</h2>
-
-        <div className="muted">Wallet collegato: {walletConnected ? 'Sì' : 'No'}</div>
-        <div className="muted">Address: {wallet?.wallet_address || 'N/D'}</div>
-        <div className="muted">Rete: Base</div>
-        <div className="muted">Email verificata: {wallet?.email_verified ? 'Sì' : 'No'}</div>
-        <div className="muted">Termini accettati: {wallet?.terms_ok ? 'Sì' : 'No'}</div>
-        <div className="muted">Abbonamento: {wallet?.subscription_status || 'inactive'}</div>
-        <div className="muted">Operatività live: {ready ? 'Attiva' : 'Non attiva'}</div>
-
-        <div className="actions">
-          <button onClick={() => connectWallet()} disabled={busy}>
-            {walletConnected ? 'Ricollega wallet' : 'Collega wallet'}
-          </button>
-
-          <button className="ghost" onClick={disconnectWallet} disabled={busy || !walletConnected}>
-            Scollega wallet
-          </button>
-        </div>
-      </div>
-
-      <div className="card stack">
-        <h2 className="section-title">Operazione live</h2>
-
-        <label className="stack">
-          <span className="muted">Capitale operativo in USDC</span>
-          <input
-            value={amountUsdc}
-            inputMode="decimal"
-            placeholder="1"
-            onChange={(e) => setAmountUsdc(e.target.value)}
-          />
-        </label>
-
-        <button onClick={authorizeOperation} disabled={busy}>
-          Autorizza dal wallet
-        </button>
-
-        <div className="muted">
-          Importo selezionato: {amountUsdc || '0'} USDC
-        </div>
-      </div>
-
-      {(lastApprovalHash || lastSwapHash) ? (
-        <div className="card stack">
-          <h2 className="section-title">Ultima operazione</h2>
-
-          {lastApprovalHash ? (
-            <div className="muted">Autorizzazione: {shortHash(lastApprovalHash)}</div>
-          ) : null}
-
-          {lastSwapHash ? (
-            <div className="muted">Transazione: {shortHash(lastSwapHash)}</div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  )
+  return <div className="shell section stack"><div><h1 className="section-title">Wallet</h1><p className="section-sub">Collega i wallet e gestisci l’operatività live in modalità non-custodial.</p></div>{msg ? <div className="good">{msg}</div> : null}{err ? <div className="bad">{err}</div> : null}{step ? <div className="good">{step}</div> : null}<div className="grid-2"><div className="card stack"><h2 className="section-title">Wallet EVM</h2><div className="muted">Reti: Ethereum, Base, BSC, Polygon, Arbitrum, Optimism, Avalanche</div><div className="muted">Stato: {wallet?.evm.connected ? 'Collegato' : 'Non collegato'}</div><div className="muted">Address: {wallet?.evm.address || 'N/D'}</div><div className="actions"><button onClick={connectEvm} disabled={busy}>{wallet?.evm.connected ? 'Ricollega EVM' : 'Collega EVM'}</button><button className="ghost" onClick={disconnectEvm} disabled={busy || !wallet?.evm.connected}>Scollega EVM</button></div></div><div className="card stack"><h2 className="section-title">Wallet Solana</h2><div className="muted">Reti: Solana</div><div className="muted">Stato: {wallet?.solana.connected ? 'Collegato' : 'Non collegato'}</div><div className="muted">Address: {wallet?.solana.address || 'N/D'}</div><div className="actions"><button onClick={connectSolana} disabled={busy}>{wallet?.solana.connected ? 'Ricollega Solana' : 'Collega Solana'}</button><button className="ghost" onClick={disconnectSolana} disabled={busy || !wallet?.solana.connected}>Scollega Solana</button></div></div></div><div className="grid-2"><div className="card stack"><h2 className="section-title">Operazione EVM</h2><label className="stack"><span className="muted">Capitale operativo in USDC</span><input value={evmAmount} inputMode="decimal" placeholder="1" onChange={(e) => setEvmAmount(e.target.value)} /></label><button onClick={authorizeEvm} disabled={busy || !wallet?.evm.connected}>Autorizza EVM dal wallet</button><div className="muted">Importo selezionato: {evmAmount || '0'} USDC</div></div><div className="card stack"><h2 className="section-title">Operazione Solana</h2><label className="stack"><span className="muted">Capitale operativo in USDC</span><input value={solAmount} inputMode="decimal" placeholder="1" onChange={(e) => setSolAmount(e.target.value)} /></label><button onClick={authorizeSolana} disabled={busy || !wallet?.solana.connected}>Autorizza Solana dal wallet</button><div className="muted">Importo selezionato: {solAmount || '0'} USDC</div></div></div>{(lastEvmHash || lastSolHash) ? <div className="card stack"><h2 className="section-title">Ultima operazione</h2>{lastEvmHash ? <div className="muted">EVM: {shortHash(lastEvmHash)}</div> : null}{lastSolHash ? <div className="muted">Solana: {shortHash(lastSolHash)}</div> : null}</div> : null}</div>
 }

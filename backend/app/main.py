@@ -46,9 +46,11 @@ from app.services.engine_manager import microcap_manager, user_microcap_manager
 from app.services.mailer import send_email
 from app.services.microcap_reader import read_dashboard
 from app.services.noncustodial import build_zeroex_quote, normalize_wallet_address, verify_wallet_signature
+from app.routes.wallet_dual import router as wallet_dual_router
 
 settings = get_settings()
 app = FastAPI(title=settings.APP_NAME)
+app.include_router(wallet_dual_router)
 
 
 def _tail(value: str | None, size: int) -> str:
